@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { loadData, saveData } from '../lib/storage';
 import { convertAmount } from '../lib/currency';
-import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS } from '../lib/dummyData';
+import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM } from '../lib/dummyData';
 
 export const useCashTrack = () => {
   const [data, setData] = useState(() => {
     const saved = loadData();
-    return saved || { transactions: DUMMY_TRANSACTIONS, clients: DUMMY_CLIENTS };
+    return saved || { transactions: DUMMY_TRANSACTIONS, clients: DUMMY_CLIENTS, team: DUMMY_TEAM };
   });
   const [displayCurrency, setDisplayCurrency] = useState('PKR');
   const [theme, setTheme] = useState(() => localStorage.getItem('cashtrack_theme') || 'dark');
@@ -18,6 +18,7 @@ export const useCashTrack = () => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
+  // --- Transaction CRUD ---
   const addTransaction = useCallback((t) => {
     const newT = { ...t, id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, transactions: [newT, ...d.transactions] }));
@@ -28,6 +29,8 @@ export const useCashTrack = () => {
   const deleteTransaction = useCallback((id) => {
     setData((d) => ({ ...d, transactions: d.transactions.filter((t) => t.id !== id) }));
   }, []);
+
+  // --- Client CRUD ---
   const addClient = useCallback((c) => {
     const newC = { ...c, id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, clients: [...d.clients, newC] }));
@@ -40,6 +43,22 @@ export const useCashTrack = () => {
       ...d,
       clients: d.clients.filter((c) => c.id !== id),
       transactions: d.transactions.map((t) => t.clientId === id ? { ...t, clientId: null } : t),
+    }));
+  }, []);
+
+  // ✅ NEW: Team Member CRUD
+  const addTeamMember = useCallback((m) => {
+    const newM = { ...m, id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
+    setData((d) => ({ ...d, team: [...d.team, newM] }));
+  }, []);
+  const updateTeamMember = useCallback((id, patch) => {
+    setData((d) => ({ ...d, team: d.team.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
+  }, []);
+  const deleteTeamMember = useCallback((id) => {
+    setData((d) => ({
+      ...d,
+      team: d.team.filter((m) => m.id !== id),
+      transactions: d.transactions.map((t) => t.assigneeId === id ? { ...t, assigneeId: null } : t),
     }));
   }, []);
 
@@ -95,5 +114,21 @@ export const useCashTrack = () => {
     return Object.entries(map).map(([id, total]) => ({ client: data.clients.find((c) => c.id === id), total })).filter((x) => x.client).sort((a, b) => b.total - a.total).slice(0, 5);
   }, [data.transactions, data.clients, toDisplay]);
 
-  return { data, displayCurrency, setDisplayCurrency, theme, setTheme, addTransaction, updateTransaction, deleteTransaction, addClient, updateClient, deleteClient, toDisplay, aggregates, monthlySeries, topClients };
+  // ✅ NEW: Earnings by Team Member
+  const earningsByMember = useMemo(() => {
+    const map = {};
+    data.transactions.forEach((t) => {
+      if (t.type !== 'income' || !t.assigneeId) return;
+      map[t.assigneeId] = (map[t.assigneeId] || 0) + toDisplay(t.amount, t.currency);
+    });
+    return Object.entries(map).map(([id, total]) => ({ member: data.team.find((m) => m.id === id), total })).filter((x) => x.member).sort((a, b) => b.total - a.total);
+  }, [data.transactions, data.team, toDisplay]);
+
+  return { 
+    data, displayCurrency, setDisplayCurrency, theme, setTheme, 
+    addTransaction, updateTransaction, deleteTransaction, 
+    addClient, updateClient, deleteClient,
+    addTeamMember, updateTeamMember, deleteTeamMember, // ✅ NEW
+    toDisplay, aggregates, monthlySeries, topClients, earningsByMember 
+  };
 };
