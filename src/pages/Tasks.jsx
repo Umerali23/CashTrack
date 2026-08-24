@@ -32,7 +32,6 @@ export default function Tasks({ ctx, toast, user }) {
 
   const openNew = () => {
     setEditing(null);
-    // If member, auto-assign to themselves. If admin, leave blank.
     setForm({ ...EMPTY_FORM, assigneeId: user?.role === 'member' ? user.id : '' });
     setModalOpen(true);
   };
@@ -46,7 +45,6 @@ export default function Tasks({ ctx, toast, user }) {
   const handleSave = () => {
     if (!form.title.trim()) return toast('Title is required', 'error');
     
-    // ✅ SECURITY: Enforce that members cannot change the assignee
     let finalAssigneeId = form.assigneeId;
     if (user?.role === 'member') {
       finalAssigneeId = editing ? editing.assigneeId : user.id; 
@@ -187,30 +185,26 @@ export default function Tasks({ ctx, toast, user }) {
           </div>
           
           <div className="grid grid-cols-2 gap-3">
-  <div>
-    <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client</label>
-    <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input">
-      <option value="">— None —</option>
-      {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-    </select>
-  </div>
-  
-  {/* ✅ ONLY ADMIN SEES THIS */}
-  {user?.role === 'admin' && (
-    <div>
-      <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assignee</label>
-      <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="input">
-        <option value="">— Unassigned —</option>
-        {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-      </select>
-    </div>
-  )}
-</div>
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client</label>
+              <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input">
+                <option value="">— None —</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            
+            {/* ✅ ONLY ADMIN SEES THIS */}
+            {user?.role === 'admin' && (
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assignee</label>
+                <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="input">
+                  <option value="">— Unassigned —</option>
+                  {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
 
-{/* If user is member, they need a hidden field to maintain their own ID */}
-{user?.role === 'member' && (
-  <input type="hidden" value={form.assigneeId} readOnly />
-)}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label>

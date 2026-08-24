@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { loadData, saveData } from '../lib/storage';
 import { convertAmount } from '../lib/currency';
-import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM, DUMMY_TASKS } from '../lib/dummyData';
-
+import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM, DUMMY_TASKS, DUMMY_INVOICES } from '../lib/dummyData';
 export const useCashTrack = (user) => {
   const [data, setData] = useState(() => {
     const saved = loadData();

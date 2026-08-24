@@ -28,7 +28,6 @@ export const DUMMY_TRANSACTIONS = [
   { id: 't13', type: 'income', amount: 60000, currency: 'PKR', clientId: 'c2', assigneeId: 'u2', category: 'Design Work', date: daysAgo(38), description: 'Packaging design', status: 'paid' },
 ];
 
-// ✅ NEW: Phase 2 Dummy Tasks
 export const DUMMY_TASKS = [
   { id: 'tk1', title: 'Design Homepage UI', description: 'Create high-fidelity mockups for the new SaaS landing page.', clientId: 'c1', assigneeId: 'u2', status: 'completed', dueDate: daysAgo(2), createdAt: daysAgo(10) },
   { id: 'tk2', title: 'Integrate Stripe API', description: 'Set up payment intents and webhooks for the checkout flow.', clientId: 'c3', assigneeId: 'u1', status: 'in-progress', dueDate: daysAgo(-2), createdAt: daysAgo(5) },
@@ -37,9 +36,7 @@ export const DUMMY_TASKS = [
   { id: 'tk5', title: 'Create Social Media Assets', description: 'Design 5 Instagram posts for the upcoming launch.', clientId: 'c2', assigneeId: 'u2', status: 'in-progress', dueDate: daysAgo(-1), createdAt: daysAgo(4) },
 ];
 
-
-// ... (Keep your existing DUMMY_TEAM, DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TASKS)
-
+// ✅ THIS IS THE MISSING PIECE!
 export const DUMMY_INVOICES = [
   { 
     id: 'inv1', invoiceNumber: 'INV-001', clientId: 'c1', 
@@ -60,3 +57,5 @@ export const DUMMY_INVOICES = [
     status: 'draft', issueDate: daysAgo(2), dueDate: daysAgo(-15), total: 150000, currency: 'PKR' 
   },
 ];
+
+
