@@ -3,12 +3,17 @@ import { loadData, saveData } from '../lib/storage';
 import { convertAmount } from '../lib/currency';
 import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM, DUMMY_TASKS } from '../lib/dummyData';
 
-// ✅ Accept user as a parameter
 export const useCashTrack = (user) => {
   const [data, setData] = useState(() => {
     const saved = loadData();
-    return saved || { transactions: DUMMY_TRANSACTIONS, clients: DUMMY_CLIENTS, team: DUMMY_TEAM, tasks: DUMMY_TASKS };
+    return saved || { 
+      transactions: DUMMY_TRANSACTIONS, 
+      clients: DUMMY_CLIENTS, 
+      team: DUMMY_TEAM, 
+      tasks: DUMMY_TASKS 
+    };
   });
+  
   const [displayCurrency, setDisplayCurrency] = useState('PKR');
   const [theme, setTheme] = useState(() => localStorage.getItem('cashtrack_theme') || 'dark');
 
@@ -19,7 +24,7 @@ export const useCashTrack = (user) => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
-  // --- CRUD Functions (Unchanged) ---
+  // --- CRUD Functions ---
   const addTransaction = useCallback((t) => {
     const newT = { ...t, id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, transactions: [newT, ...d.transactions] }));
@@ -71,19 +76,18 @@ export const useCashTrack = (user) => {
 
   const toDisplay = useCallback((amount, originalCurrency) => convertAmount(amount, originalCurrency, displayCurrency), [displayCurrency]);
 
-  // ✅ CRITICAL: Filter transactions based on user role
+  // ✅ PRIVACY FILTERING
   const effectiveTransactions = useMemo(() => {
     if (!user || user.role === 'admin') return data.transactions || [];
     return (data.transactions || []).filter(t => t.assigneeId === user.id);
   }, [data.transactions, user]);
 
-  // ✅ CRITICAL: Filter tasks based on user role
   const effectiveTasks = useMemo(() => {
     if (!user || user.role === 'admin') return data.tasks || [];
     return (data.tasks || []).filter(t => t.assigneeId === user.id);
   }, [data.tasks, user]);
 
-  // ✅ Aggregates now use effectiveTransactions
+  // --- Aggregates ---
   const aggregates = useMemo(() => {
     const now = new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -134,9 +138,8 @@ export const useCashTrack = (user) => {
     return Object.entries(map).map(([id, total]) => ({ client: data.clients.find((c) => c.id === id), total })).filter((x) => x.client).sort((a, b) => b.total - a.total).slice(0, 5);
   }, [effectiveTransactions, data.clients, toDisplay]);
 
-  // ✅ Team earnings ONLY visible to Admin
   const earningsByMember = useMemo(() => {
-    if (user?.role !== 'admin') return []; // Hide for members
+    if (user?.role !== 'admin') return []; 
     const map = {};
     (data.transactions || []).forEach((t) => {
       if (t.type !== 'income' || !t.assigneeId) return;
@@ -147,8 +150,8 @@ export const useCashTrack = (user) => {
 
   return { 
     data, 
-    transactions: effectiveTransactions, // ✅ Expose filtered list
-    tasks: effectiveTasks,               // ✅ Expose filtered tasks
+    transactions: effectiveTransactions, 
+    tasks: effectiveTasks, 
     displayCurrency, setDisplayCurrency, theme, setTheme, 
     addTransaction, updateTransaction, deleteTransaction, 
     addClient, updateClient, deleteClient,

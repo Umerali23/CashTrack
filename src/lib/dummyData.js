@@ -1,6 +1,9 @@
-const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+const daysAgo = (n) => { 
+  const d = new Date(); 
+  d.setDate(d.getDate() - n); 
+  return d.toISOString().slice(0, 10); 
+};
 
-// ✅ NEW: Team Members
 export const DUMMY_TEAM = [
   { id: 'u1', name: 'Umer', role: 'Full-Stack Developer', avatarColor: 'from-blue-400 to-indigo-500' },
   { id: 'u2', name: 'Laiba', role: 'UI/UX Designer', avatarColor: 'from-pink-400 to-rose-500' },
@@ -14,7 +17,6 @@ export const DUMMY_CLIENTS = [
   { id: 'c5', name: 'Ali Raza', company: 'Friend Referral', email: 'ali.raza@yahoo.com', avatarColor: 'from-rose-400 to-pink-500' },
 ];
 
-// ✅ UPDATED: Transactions now have assigneeId
 export const DUMMY_TRANSACTIONS = [
   { id: 't1', type: 'income', amount: 450, currency: 'USD', clientId: 'c1', assigneeId: 'u1', category: 'Development', date: daysAgo(2), description: 'Landing page build', status: 'paid' },
   { id: 't2', type: 'income', amount: 85000, currency: 'PKR', clientId: 'c2', assigneeId: 'u2', category: 'Design Work', date: daysAgo(5), description: 'Shop signage & menu design', status: 'paid' },
@@ -37,4 +39,13 @@ export const DUMMY_TRANSACTIONS = [
   { id: 't19', type: 'income', amount: 120000, currency: 'PKR', clientId: 'c4', assigneeId: 'u1', category: 'Development', date: daysAgo(70), description: 'Corporate website', status: 'paid' },
   { id: 't20', type: 'expense', amount: 24, currency: 'USD', clientId: null, assigneeId: null, category: 'Software', date: daysAgo(75), description: 'Vercel Pro', status: 'paid' },
   { id: 't21', type: 'income', amount: 500, currency: 'USD', clientId: 'c3', assigneeId: 'u1', category: 'Development', date: daysAgo(80), description: 'Bug fixes', status: 'paid' },
+];
+
+export const DUMMY_TASKS = [
+  { id: 'tk1', title: 'Design Homepage UI', description: 'Create high-fidelity mockups for the new SaaS landing page.', clientId: 'c1', assigneeId: 'u2', status: 'completed', dueDate: daysAgo(2), createdAt: daysAgo(10) },
+  { id: 'tk2', title: 'Integrate Stripe API', description: 'Set up payment intents and webhooks for the checkout flow.', clientId: 'c3', assigneeId: 'u1', status: 'in-progress', dueDate: daysAgo(-2), createdAt: daysAgo(5) },
+  { id: 'tk3', title: 'Logo Redesign', description: 'Provide 3 initial concepts for the brand refresh.', clientId: 'c1', assigneeId: 'u2', status: 'completed', dueDate: daysAgo(15), createdAt: daysAgo(20) },
+  { id: 'tk4', title: 'Fix Mobile Responsiveness', description: 'Address layout shifts on iOS Safari for the dashboard.', clientId: 'c4', assigneeId: 'u1', status: 'pending', dueDate: daysAgo(-5), createdAt: daysAgo(3) },
+  { id: 'tk5', title: 'Create Social Media Assets', description: 'Design 5 Instagram posts for the upcoming launch.', clientId: 'c2', assigneeId: 'u2', status: 'in-progress', dueDate: daysAgo(-1), createdAt: daysAgo(4) },
+  { id: 'tk6', title: 'Database Optimization', description: 'Add indexes to slow queries in the user table.', clientId: 'c4', assigneeId: 'u1', status: 'pending', dueDate: daysAgo(-7), createdAt: daysAgo(1) },
 ];
