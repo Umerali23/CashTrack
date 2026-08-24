@@ -55,8 +55,8 @@ export default function Transactions({ ctx, toast, newTxTrigger }) {
   const [errors, setErrors] = useState({});
   const openNewRef = useRef(null);
 
-  // ✅ CRASH FIX: Safe fallbacks prevent white screens if data is missing
-  const transactions = data?.transactions || [];
+   // ✅ Use the filtered transactions provided by the hook
+  const transactions = ctx.transactions || [];
   const clients = data?.clients || [];
   const team = data?.team || [];
 

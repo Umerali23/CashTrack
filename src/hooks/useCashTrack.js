@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { loadData, saveData } from '../lib/storage';
 import { convertAmount } from '../lib/currency';
-import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM } from '../lib/dummyData';
+import { DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TEAM, DUMMY_TASKS } from '../lib/dummyData';
 
-export const useCashTrack = () => {
+// ✅ Accept user as a parameter
+export const useCashTrack = (user) => {
   const [data, setData] = useState(() => {
     const saved = loadData();
-    return saved || { transactions: DUMMY_TRANSACTIONS, clients: DUMMY_CLIENTS, team: DUMMY_TEAM };
+    return saved || { transactions: DUMMY_TRANSACTIONS, clients: DUMMY_CLIENTS, team: DUMMY_TEAM, tasks: DUMMY_TASKS };
   });
   const [displayCurrency, setDisplayCurrency] = useState('PKR');
   const [theme, setTheme] = useState(() => localStorage.getItem('cashtrack_theme') || 'dark');
@@ -18,7 +19,7 @@ export const useCashTrack = () => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
-  // --- Transaction CRUD ---
+  // --- CRUD Functions (Unchanged) ---
   const addTransaction = useCallback((t) => {
     const newT = { ...t, id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, transactions: [newT, ...d.transactions] }));
@@ -29,8 +30,6 @@ export const useCashTrack = () => {
   const deleteTransaction = useCallback((id) => {
     setData((d) => ({ ...d, transactions: d.transactions.filter((t) => t.id !== id) }));
   }, []);
-
-  // --- Client CRUD ---
   const addClient = useCallback((c) => {
     const newC = { ...c, id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, clients: [...d.clients, newC] }));
@@ -45,8 +44,6 @@ export const useCashTrack = () => {
       transactions: d.transactions.map((t) => t.clientId === id ? { ...t, clientId: null } : t),
     }));
   }, []);
-
-  // ✅ NEW: Team Member CRUD
   const addTeamMember = useCallback((m) => {
     const newM = { ...m, id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, team: [...d.team, newM] }));
@@ -61,16 +58,39 @@ export const useCashTrack = () => {
       transactions: d.transactions.map((t) => t.assigneeId === id ? { ...t, assigneeId: null } : t),
     }));
   }, []);
+  const addTask = useCallback((t) => {
+    const newT = { ...t, id: `tk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, createdAt: new Date().toISOString().slice(0, 10) };
+    setData((d) => ({ ...d, tasks: [newT, ...d.tasks] }));
+  }, []);
+  const updateTask = useCallback((id, patch) => {
+    setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
+  }, []);
+  const deleteTask = useCallback((id) => {
+    setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id) }));
+  }, []);
 
   const toDisplay = useCallback((amount, originalCurrency) => convertAmount(amount, originalCurrency, displayCurrency), [displayCurrency]);
 
+  // ✅ CRITICAL: Filter transactions based on user role
+  const effectiveTransactions = useMemo(() => {
+    if (!user || user.role === 'admin') return data.transactions || [];
+    return (data.transactions || []).filter(t => t.assigneeId === user.id);
+  }, [data.transactions, user]);
+
+  // ✅ CRITICAL: Filter tasks based on user role
+  const effectiveTasks = useMemo(() => {
+    if (!user || user.role === 'admin') return data.tasks || [];
+    return (data.tasks || []).filter(t => t.assigneeId === user.id);
+  }, [data.tasks, user]);
+
+  // ✅ Aggregates now use effectiveTransactions
   const aggregates = useMemo(() => {
     const now = new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     let income = 0, expense = 0, pending = 0, prevIncome = 0, prevExpense = 0;
 
-    data.transactions.forEach((t) => {
+    effectiveTransactions.forEach((t) => {
       const d = new Date(t.date);
       const displayAmt = toDisplay(t.amount, t.currency);
       if (d >= thisMonthStart) {
@@ -85,7 +105,7 @@ export const useCashTrack = () => {
       incomeChange: prevIncome ? ((income - prevIncome) / prevIncome) * 100 : 0,
       expenseChange: prevExpense ? ((expense - prevExpense) / prevExpense) * 100 : 0,
     };
-  }, [data.transactions, toDisplay]);
+  }, [effectiveTransactions, toDisplay]);
 
   const monthlySeries = useMemo(() => {
     const months = []; const now = new Date();
@@ -93,7 +113,7 @@ export const useCashTrack = () => {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
       let inc = 0, exp = 0;
-      data.transactions.forEach((t) => {
+      effectiveTransactions.forEach((t) => {
         const d = new Date(t.date);
         if (d >= start && d < end) {
           const amt = toDisplay(t.amount, t.currency);
@@ -103,32 +123,37 @@ export const useCashTrack = () => {
       months.push({ label: start.toLocaleString('en-US', { month: 'short' }), year: start.getFullYear(), income: inc, expense: exp, profit: inc - exp });
     }
     return months;
-  }, [data.transactions, toDisplay]);
+  }, [effectiveTransactions, toDisplay]);
 
   const topClients = useMemo(() => {
     const map = {};
-    data.transactions.forEach((t) => {
+    effectiveTransactions.forEach((t) => {
       if (t.type !== 'income' || !t.clientId) return;
       map[t.clientId] = (map[t.clientId] || 0) + toDisplay(t.amount, t.currency);
     });
     return Object.entries(map).map(([id, total]) => ({ client: data.clients.find((c) => c.id === id), total })).filter((x) => x.client).sort((a, b) => b.total - a.total).slice(0, 5);
-  }, [data.transactions, data.clients, toDisplay]);
+  }, [effectiveTransactions, data.clients, toDisplay]);
 
-  // ✅ NEW: Earnings by Team Member
+  // ✅ Team earnings ONLY visible to Admin
   const earningsByMember = useMemo(() => {
+    if (user?.role !== 'admin') return []; // Hide for members
     const map = {};
-    data.transactions.forEach((t) => {
+    (data.transactions || []).forEach((t) => {
       if (t.type !== 'income' || !t.assigneeId) return;
       map[t.assigneeId] = (map[t.assigneeId] || 0) + toDisplay(t.amount, t.currency);
     });
     return Object.entries(map).map(([id, total]) => ({ member: data.team.find((m) => m.id === id), total })).filter((x) => x.member).sort((a, b) => b.total - a.total);
-  }, [data.transactions, data.team, toDisplay]);
+  }, [data.transactions, data.team, toDisplay, user]);
 
   return { 
-    data, displayCurrency, setDisplayCurrency, theme, setTheme, 
+    data, 
+    transactions: effectiveTransactions, // ✅ Expose filtered list
+    tasks: effectiveTasks,               // ✅ Expose filtered tasks
+    displayCurrency, setDisplayCurrency, theme, setTheme, 
     addTransaction, updateTransaction, deleteTransaction, 
     addClient, updateClient, deleteClient,
-    addTeamMember, updateTeamMember, deleteTeamMember, // ✅ NEW
+    addTeamMember, updateTeamMember, deleteTeamMember,
+    addTask, updateTask, deleteTask,
     toDisplay, aggregates, monthlySeries, topClients, earningsByMember 
   };
 };

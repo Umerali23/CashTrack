@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import Sidebar from "./components/Sidebar";
 import Toast from "./components/Toast";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Clients from "./pages/Clients";
@@ -8,12 +10,18 @@ import Team from "./pages/Team";
 import Analytics from "./pages/Analytics";
 import { useCashTrack } from "./hooks/useCashTrack";
 
-export default function App() {
-  const ctx = useCashTrack();
+function AppContent() {
+  const { user, logout } = useAuth();
+  const ctx = useCashTrack(user);
   const [page, setPage] = useState("dashboard");
   const [toasts, setToasts] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [newTxTrigger, setNewTxTrigger] = useState(0);
+
+  // If not logged in, show Login screen
+  if (!user) {
+    return <Login />;
+  }
 
   const toast = useCallback((message, type = "success") => {
     const id = `toast_${Date.now()}_${Math.random()}`;
@@ -41,6 +49,8 @@ export default function App() {
         <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
       </div>
       <div className="fixed inset-0 bg-grid pointer-events-none opacity-60" />
+
+      {/* Pass user and logout to Sidebar */}
       <Sidebar
         page={page}
         setPage={setPage}
@@ -48,19 +58,32 @@ export default function App() {
         setDisplayCurrency={ctx.setDisplayCurrency}
         theme={ctx.theme}
         setTheme={ctx.setTheme}
+        user={user}
+        onLogout={logout}
       />
+
       <main className="lg:pl-64 pt-16 lg:pt-0 pb-24 lg:pb-8 px-4 sm:px-6 lg:px-10 relative">
         <div className="max-w-7xl mx-auto">
+          {/* Role-based rendering can be added here later */}
           {page === "dashboard" && (
             <Dashboard
               ctx={ctx}
               onNewTransaction={handleNewTransaction}
               onSelectClient={handleSelectClient}
+              user={user}
             />
           )}
           {page === "transactions" && (
-            <Transactions ctx={ctx} toast={toast} newTxTrigger={newTxTrigger} />
+            <Transactions
+              ctx={ctx}
+              toast={toast}
+              newTxTrigger={newTxTrigger}
+              user={user}
+            />
           )}
+
+          {page === "tasks" && <Tasks ctx={ctx} toast={toast} user={user} />}
+
           {page === "clients" && (
             <Clients
               ctx={ctx}
@@ -68,13 +91,22 @@ export default function App() {
               selectedClientId={selectedClientId}
               onSelectClient={setSelectedClientId}
               onClearSelection={() => setSelectedClientId(null)}
+              user={user}
             />
           )}
-          {page === "team" && <Team ctx={ctx} toast={toast} />}
-          {page === "analytics" && <Analytics ctx={ctx} />}
+          {page === "team" && <Team ctx={ctx} toast={toast} user={user} />}
+          {page === 'analytics' && <Analytics ctx={ctx} user={user} />}
         </div>
       </main>
       <Toast toasts={toasts} removeToast={removeToast} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
