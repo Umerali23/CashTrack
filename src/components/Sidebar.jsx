@@ -1,20 +1,27 @@
-import { LayoutDashboard, Receipt, Users, BarChart3, DollarSign, Sun, Moon, UserCircle, LogOut, ListChecks, FileText } from 'lucide-react';
-
-const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, 
-  { id: 'tasks', label: 'Tasks', icon: ListChecks }, 
-  { id: 'invoices', label: 'Invoices', icon: FileText }, // ✅ NEW
-  { id: 'transactions', label: 'Transactions', icon: Receipt }, 
-  { id: 'clients', label: 'Clients', icon: Users }, 
-  { id: 'team', label: 'Team', icon: UserCircle }, 
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 }
-];
+import { LayoutDashboard, Receipt, Users, BarChart3, DollarSign, Sun, Moon, UserCircle, LogOut, ListChecks, FileText, Wallet } from 'lucide-react';
 
 const CURRENCIES = [{ id: 'PKR', label: 'PKR' }, { id: 'USD', label: 'USD' }, { id: 'ORIGINAL', label: 'Original' }];
 
 export default function Sidebar({ page, setPage, displayCurrency, setDisplayCurrency, theme, setTheme, user, onLogout }) {
   const userInitials = user?.name?.split(' ').map(w => w[0]).slice(0, 2).join('') || 'U';
   const userColor = user?.avatarColor || 'from-slate-400 to-slate-600';
+
+  // ✅ Dynamic Navigation based on Role
+  const NAV = user?.role === 'admin' 
+    ? [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, 
+        { id: 'tasks', label: 'Tasks', icon: ListChecks }, 
+        { id: 'invoices', label: 'Invoices', icon: FileText }, 
+        { id: 'transactions', label: 'Transactions', icon: Receipt }, 
+        { id: 'clients', label: 'Clients', icon: Users }, 
+        { id: 'team', label: 'Team', icon: UserCircle }, 
+        { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+      ]
+    : [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, 
+        { id: 'tasks', label: 'Tasks', icon: ListChecks }, 
+        { id: 'earnings', label: 'My Earnings', icon: Wallet }
+      ];
 
   return (
     <>
@@ -62,7 +69,8 @@ export default function Sidebar({ page, setPage, displayCurrency, setDisplayCurr
       </div>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-ink-600/60 pb-safe">
-        <div className="grid grid-cols-6">
+        {/* ✅ Dynamic Grid Columns based on Role */}
+        <div className={user?.role === 'admin' ? 'grid grid-cols-7' : 'grid grid-cols-3'}>
           {NAV.map((item) => { const Icon = item.icon; const active = page === item.id; return <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center gap-1 py-3 text-[10px] font-semibold transition-colors cursor-pointer ${active ? 'text-emerald-400' : 'text-ink-400'}`}><Icon className="h-5 w-5" strokeWidth={active ? 2.3 : 2} />{item.label}</button>; })}
         </div>
       </nav>
