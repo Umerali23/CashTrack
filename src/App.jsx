@@ -13,8 +13,6 @@ import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
   const { user, logout } = useAuth();
-  
-  // ✅ Pass user into the hook for privacy filtering
   const ctx = useCashTrack(user);
   
   const [page, setPage] = useState('dashboard');
@@ -22,9 +20,7 @@ function AppContent() {
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [newTxTrigger, setNewTxTrigger] = useState(0);
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
   const toast = useCallback((message, type = 'success') => {
     const id = `toast_${Date.now()}_${Math.random()}`;
@@ -43,16 +39,7 @@ function AppContent() {
       </div>
       <div className="fixed inset-0 bg-grid pointer-events-none opacity-60" />
       
-      <Sidebar 
-        page={page} 
-        setPage={setPage} 
-        displayCurrency={ctx.displayCurrency} 
-        setDisplayCurrency={ctx.setDisplayCurrency} 
-        theme={ctx.theme} 
-        setTheme={ctx.setTheme}
-        user={user}
-        onLogout={logout}
-      />
+      <Sidebar page={page} setPage={setPage} displayCurrency={ctx.displayCurrency} setDisplayCurrency={ctx.setDisplayCurrency} theme={ctx.theme} setTheme={ctx.setTheme} user={user} onLogout={logout} />
       
       <main className="lg:pl-64 pt-16 lg:pt-0 pb-24 lg:pb-8 px-4 sm:px-6 lg:px-10 relative">
         <div className="max-w-7xl mx-auto">

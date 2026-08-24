@@ -24,7 +24,7 @@ export const useCashTrack = (user) => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
-  // --- CRUD Functions ---
+  // --- CRUD: Transactions ---
   const addTransaction = useCallback((t) => {
     const newT = { ...t, id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, transactions: [newT, ...d.transactions] }));
@@ -35,6 +35,8 @@ export const useCashTrack = (user) => {
   const deleteTransaction = useCallback((id) => {
     setData((d) => ({ ...d, transactions: d.transactions.filter((t) => t.id !== id) }));
   }, []);
+
+  // --- CRUD: Clients ---
   const addClient = useCallback((c) => {
     const newC = { ...c, id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, clients: [...d.clients, newC] }));
@@ -43,12 +45,10 @@ export const useCashTrack = (user) => {
     setData((d) => ({ ...d, clients: d.clients.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
   }, []);
   const deleteClient = useCallback((id) => {
-    setData((d) => ({
-      ...d,
-      clients: d.clients.filter((c) => c.id !== id),
-      transactions: d.transactions.map((t) => t.clientId === id ? { ...t, clientId: null } : t),
-    }));
+    setData((d) => ({ ...d, clients: d.clients.filter((c) => c.id !== id) }));
   }, []);
+
+  // --- CRUD: Team ---
   const addTeamMember = useCallback((m) => {
     const newM = { ...m, id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
     setData((d) => ({ ...d, team: [...d.team, newM] }));
@@ -57,12 +57,10 @@ export const useCashTrack = (user) => {
     setData((d) => ({ ...d, team: d.team.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
   }, []);
   const deleteTeamMember = useCallback((id) => {
-    setData((d) => ({
-      ...d,
-      team: d.team.filter((m) => m.id !== id),
-      transactions: d.transactions.map((t) => t.assigneeId === id ? { ...t, assigneeId: null } : t),
-    }));
+    setData((d) => ({ ...d, team: d.team.filter((m) => m.id !== id) }));
   }, []);
+
+  // ✅ CRUD: Tasks (Phase 2)
   const addTask = useCallback((t) => {
     const newT = { ...t, id: `tk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, createdAt: new Date().toISOString().slice(0, 10) };
     setData((d) => ({ ...d, tasks: [newT, ...d.tasks] }));
