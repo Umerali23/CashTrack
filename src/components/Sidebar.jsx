@@ -1,8 +1,9 @@
-import { LayoutDashboard, Receipt, Users, BarChart3, DollarSign, Sun, Moon, UserCircle, LogOut, ListChecks } from 'lucide-react';
+import { LayoutDashboard, Receipt, Users, BarChart3, DollarSign, Sun, Moon, UserCircle, LogOut, ListChecks, FileText } from 'lucide-react';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, 
   { id: 'tasks', label: 'Tasks', icon: ListChecks }, 
+  { id: 'invoices', label: 'Invoices', icon: FileText }, // ✅ NEW
   { id: 'transactions', label: 'Transactions', icon: Receipt }, 
   { id: 'clients', label: 'Clients', icon: Users }, 
   { id: 'team', label: 'Team', icon: UserCircle }, 

@@ -45,3 +45,29 @@ body.light { background: #fafafa; color: #0a0a0b; }
   background-image: linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
 }
 .blob { position: absolute; border-radius: 9999px; filter: blur(80px); opacity: 0.35; pointer-events: none; }
+
+
+/* ... keep all your existing CSS above ... */
+
+/* ✅ Phase 3: Print Styles for Invoices */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  @page {
+    margin: 0;
+    size: A4;
+  }
+}
+.print-only {
+  display: none;
+}

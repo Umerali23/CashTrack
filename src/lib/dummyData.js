@@ -36,3 +36,27 @@ export const DUMMY_TASKS = [
   { id: 'tk4', title: 'Fix Mobile Responsiveness', description: 'Address layout shifts on iOS Safari for the dashboard.', clientId: 'c4', assigneeId: 'u1', status: 'pending', dueDate: daysAgo(-5), createdAt: daysAgo(3) },
   { id: 'tk5', title: 'Create Social Media Assets', description: 'Design 5 Instagram posts for the upcoming launch.', clientId: 'c2', assigneeId: 'u2', status: 'in-progress', dueDate: daysAgo(-1), createdAt: daysAgo(4) },
 ];
+
+
+// ... (Keep your existing DUMMY_TEAM, DUMMY_CLIENTS, DUMMY_TRANSACTIONS, DUMMY_TASKS)
+
+export const DUMMY_INVOICES = [
+  { 
+    id: 'inv1', invoiceNumber: 'INV-001', clientId: 'c1', 
+    items: [{ description: 'Landing Page Design & Development', amount: 450 }], 
+    status: 'paid', issueDate: daysAgo(10), dueDate: daysAgo(0), total: 450, currency: 'USD' 
+  },
+  { 
+    id: 'inv2', invoiceNumber: 'INV-002', clientId: 'c3', 
+    items: [
+      { description: 'Dashboard MVP - Phase 1', amount: 800 },
+      { description: 'API Integration (Stripe)', amount: 400 }
+    ], 
+    status: 'sent', issueDate: daysAgo(5), dueDate: daysAgo(-10), total: 1200, currency: 'USD' 
+  },
+  { 
+    id: 'inv3', invoiceNumber: 'INV-003', clientId: 'c4', 
+    items: [{ description: 'E-commerce Website Build', amount: 150000 }], 
+    status: 'draft', issueDate: daysAgo(2), dueDate: daysAgo(-15), total: 150000, currency: 'PKR' 
+  },
+];

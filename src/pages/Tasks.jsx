@@ -32,6 +32,7 @@ export default function Tasks({ ctx, toast, user }) {
 
   const openNew = () => {
     setEditing(null);
+    // If member, auto-assign to themselves. If admin, leave blank.
     setForm({ ...EMPTY_FORM, assigneeId: user?.role === 'member' ? user.id : '' });
     setModalOpen(true);
   };
@@ -44,7 +45,19 @@ export default function Tasks({ ctx, toast, user }) {
 
   const handleSave = () => {
     if (!form.title.trim()) return toast('Title is required', 'error');
-    const payload = { ...form, clientId: form.clientId || null, assigneeId: form.assigneeId || null };
+    
+    // ✅ SECURITY: Enforce that members cannot change the assignee
+    let finalAssigneeId = form.assigneeId;
+    if (user?.role === 'member') {
+      finalAssigneeId = editing ? editing.assigneeId : user.id; 
+    }
+
+    const payload = { 
+      ...form, 
+      clientId: form.clientId || null, 
+      assigneeId: finalAssigneeId || null 
+    };
+    
     if (editing) {
       updateTask(editing.id, payload);
       toast('Task updated', 'success');
@@ -87,7 +100,6 @@ export default function Tasks({ ctx, toast, user }) {
         </button>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Total</div><div className="text-xl font-bold mt-1">{stats.total}</div></div>
         <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Completed</div><div className="text-xl font-bold text-emerald-400 mt-1">{stats.completed}</div></div>
@@ -95,7 +107,6 @@ export default function Tasks({ ctx, toast, user }) {
         <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Pending</div><div className="text-xl font-bold text-amber-400 mt-1">{stats.pending}</div></div>
       </div>
 
-      {/* Filters */}
       <div className="glass rounded-2xl p-4 flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
@@ -109,7 +120,6 @@ export default function Tasks({ ctx, toast, user }) {
         </select>
       </div>
 
-      {/* Task List */}
       <div className="glass rounded-2xl overflow-hidden">
         {visibleTasks.length === 0 ? (
           <EmptyState title="No tasks found" description="Create a new task to get started." action={<button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Task</button>} />
@@ -118,7 +128,6 @@ export default function Tasks({ ctx, toast, user }) {
             {visibleTasks.map((t) => {
               const client = clients.find(c => c.id === t.clientId);
               const assignee = team.find(m => m.id === t.assigneeId);
-              const StatusIcon = STATUS_CONFIG[t.status].icon;
               const isOverdue = t.status !== 'completed' && new Date(t.dueDate) < new Date();
 
               return (
@@ -130,7 +139,6 @@ export default function Tasks({ ctx, toast, user }) {
                         {isOverdue && <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">Overdue</span>}
                       </div>
                       <p className="text-sm text-ink-400 line-clamp-2 mb-3">{t.description || 'No description provided.'}</p>
-                      
                       <div className="flex flex-wrap items-center gap-3 text-xs">
                         {client && <span className="flex items-center gap-1.5 text-ink-300"><span className="h-1.5 w-1.5 rounded-full bg-ink-500" />{client.name}</span>}
                         {assignee && (
@@ -167,7 +175,6 @@ export default function Tasks({ ctx, toast, user }) {
         )}
       </div>
 
-      {/* Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Task' : 'New Task'}>
         <div className="space-y-4">
           <div>
@@ -178,6 +185,7 @@ export default function Tasks({ ctx, toast, user }) {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input min-h-[80px]" placeholder="Brief details about the task..." />
           </div>
+          
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client</label>
@@ -186,14 +194,19 @@ export default function Tasks({ ctx, toast, user }) {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assignee</label>
-              <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="input" disabled={user?.role === 'member'}>
-                <option value="">— Unassigned —</option>
-                {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
+            
+            {/* ✅ FIX: Only Admins see and can change the Assignee */}
+            {user?.role === 'admin' && (
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assignee</label>
+                <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="input">
+                  <option value="">— Unassigned —</option>
+                  {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label>

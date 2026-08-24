@@ -10,7 +10,8 @@ export const useCashTrack = (user) => {
       transactions: DUMMY_TRANSACTIONS, 
       clients: DUMMY_CLIENTS, 
       team: DUMMY_TEAM, 
-      tasks: DUMMY_TASKS 
+      tasks: DUMMY_TASKS ,
+      invoices: DUMMY_INVOICES
     };
   });
   
@@ -70,6 +71,18 @@ export const useCashTrack = (user) => {
   }, []);
   const deleteTask = useCallback((id) => {
     setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id) }));
+  }, []);
+
+    // ✅ CRUD: Invoices
+  const addInvoice = useCallback((inv) => {
+    const newInv = { ...inv, id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, issueDate: new Date().toISOString().slice(0, 10) };
+    setData((d) => ({ ...d, invoices: [newInv, ...d.invoices] }));
+  }, []);
+  const updateInvoice = useCallback((id, patch) => {
+    setData((d) => ({ ...d, invoices: d.invoices.map((inv) => (inv.id === id ? { ...inv, ...patch } : inv)) }));
+  }, []);
+  const deleteInvoice = useCallback((id) => {
+    setData((d) => ({ ...d, invoices: d.invoices.filter((inv) => inv.id !== id) }));
   }, []);
 
   const toDisplay = useCallback((amount, originalCurrency) => convertAmount(amount, originalCurrency, displayCurrency), [displayCurrency]);
@@ -155,6 +168,7 @@ export const useCashTrack = (user) => {
     addClient, updateClient, deleteClient,
     addTeamMember, updateTeamMember, deleteTeamMember,
     addTask, updateTask, deleteTask,
+        addInvoice, updateInvoice, deleteInvoice, // ✅ Add these
     toDisplay, aggregates, monthlySeries, topClients, earningsByMember 
   };
 };

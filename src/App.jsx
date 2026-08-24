@@ -10,6 +10,7 @@ import Team from './pages/Team';
 import Tasks from './pages/Tasks';
 import Analytics from './pages/Analytics';
 import { useCashTrack } from './hooks/useCashTrack';
+import Invoices from './pages/Invoices';
 
 function AppContent() {
   const { user, logout } = useAuth();
@@ -49,6 +50,7 @@ function AppContent() {
           {page === 'team' && <Team ctx={ctx} toast={toast} user={user} />}
           {page === 'tasks' && <Tasks ctx={ctx} toast={toast} user={user} />}
           {page === 'analytics' && <Analytics ctx={ctx} user={user} />}
+          {page === 'invoices' && <Invoices ctx={ctx} toast={toast} user={user} />}
         </div>
       </main>
       <Toast toasts={toasts} removeToast={removeToast} />
