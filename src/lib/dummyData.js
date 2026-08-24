@@ -39,21 +39,21 @@ export const DUMMY_TASKS = [
 // ✅ THIS IS THE MISSING PIECE!
 export const DUMMY_INVOICES = [
   { 
-    id: 'inv1', invoiceNumber: 'INV-001', clientId: 'c1', 
-    items: [{ description: 'Landing Page Design & Development', amount: 450 }], 
+    id: 'inv1', invoiceNumber: 'INV-001', clientId: 'c1', createdBy: 'u1',
+    items: [{ description: 'Landing Page Design & Development', amount: 450, txId: 't1' }], 
     status: 'paid', issueDate: daysAgo(10), dueDate: daysAgo(0), total: 450, currency: 'USD' 
   },
   { 
-    id: 'inv2', invoiceNumber: 'INV-002', clientId: 'c3', 
+    id: 'inv2', invoiceNumber: 'INV-002', clientId: 'c3', createdBy: 'u1',
     items: [
-      { description: 'Dashboard MVP - Phase 1', amount: 800 },
+      { description: 'Dashboard MVP - Phase 1', amount: 800, txId: 't5' },
       { description: 'API Integration (Stripe)', amount: 400 }
     ], 
     status: 'sent', issueDate: daysAgo(5), dueDate: daysAgo(-10), total: 1200, currency: 'USD' 
   },
   { 
-    id: 'inv3', invoiceNumber: 'INV-003', clientId: 'c4', 
-    items: [{ description: 'E-commerce Website Build', amount: 150000 }], 
+    id: 'inv3', invoiceNumber: 'INV-003', clientId: 'c4', createdBy: 'u2',
+    items: [{ description: 'E-commerce Website Build', amount: 150000, txId: 't9' }], 
     status: 'draft', issueDate: daysAgo(2), dueDate: daysAgo(-15), total: 150000, currency: 'PKR' 
   },
 ];

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, FileText, Printer, Trash2, CheckCircle2, Clock, Send, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, Search, FileText, Printer, Trash2, CheckCircle2, Clock, Send, Sparkles, AlertCircle, Lock } from 'lucide-react';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
@@ -17,9 +17,8 @@ const EMPTY_FORM = {
 };
 
 export default function Invoices({ ctx, toast, user }) {
-  const { data: appData, toDisplay, addInvoice, updateInvoice, deleteInvoice } = ctx;
+  const { data: appData, toDisplay, addInvoice, updateInvoice, deleteInvoice, invoices } = ctx;
   const clients = appData?.clients || [];
-  const invoices = appData?.invoices || [];
   const transactions = appData?.transactions || [];
 
   const [search, setSearch] = useState('');
@@ -31,10 +30,15 @@ export default function Invoices({ ctx, toast, user }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
+  const isAdmin = user?.role === 'admin';
+
   const uninvoicedWork = useMemo(() => {
     const clientWork = {};
     transactions.forEach(tx => {
       if (tx.type !== 'income' || tx.status !== 'paid' || !tx.clientId) return;
+      // Members only see their own transactions for auto-generate
+      if (!isAdmin && tx.assigneeId !== user?.id) return;
+      
       if (!clientWork[tx.clientId]) {
         clientWork[tx.clientId] = { items: [], total: 0, currency: tx.currency };
       }
@@ -50,7 +54,7 @@ export default function Invoices({ ctx, toast, user }) {
       clientId, client: clients.find(c => c.id === clientId),
       items: cData.items, total: cData.total, currency: cData.currency
     })).filter(cw => cw.client);
-  }, [transactions, invoices, clients, toDisplay]);
+  }, [transactions, invoices, clients, toDisplay, user, isAdmin]);
 
   const visibleInvoices = useMemo(() => {
     return invoices
@@ -79,7 +83,8 @@ export default function Invoices({ ctx, toast, user }) {
     const invoiceData = {
       invoiceNumber: `INV-${String(invoices.length + 1).padStart(3, '0')}`,
       clientId: selectedClient,
-      items: work.items.map(item => ({ description: item.description, amount: item.amount })),
+      createdBy: user?.id || 'admin', // ✅ Tag with creator
+      items: work.items.map(item => ({ description: item.description, amount: item.amount, txId: item.txId })),
       status: 'draft',
       dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       currency: work.currency, total: work.total
@@ -106,10 +111,21 @@ export default function Invoices({ ctx, toast, user }) {
     const validItems = form.items.filter(i => i.description.trim() && Number(i.amount) > 0);
     if (validItems.length === 0) return toast('Add at least one valid item', 'error');
 
-    const payload = { ...form, clientId: form.clientId || null, items: validItems, total: calculateTotal(validItems) };
+    const payload = { 
+      ...form, 
+      clientId: form.clientId || null, 
+      createdBy: editing?.createdBy || user?.id || 'admin', // ✅ Preserve or set creator
+      items: validItems,
+      total: calculateTotal(validItems)
+    };
     
-    if (editing) { updateInvoice(editing.id, payload); toast('Invoice updated', 'success'); } 
-    else { addInvoice(payload); toast('Invoice created', 'success'); }
+    if (editing) { 
+      updateInvoice(editing.id, payload); 
+      toast('Invoice updated', 'success'); 
+    } else { 
+      addInvoice(payload); 
+      toast('Invoice created', 'success'); 
+    }
     setModalOpen(false);
   };
 
@@ -122,8 +138,10 @@ export default function Invoices({ ctx, toast, user }) {
   const handlePrint = () => { setPreviewInv(null); setTimeout(() => window.print(), 100); };
 
   const stats = useMemo(() => ({
-    total: visibleInvoices.length, paid: visibleInvoices.filter(i => i.status === 'paid').length,
-    sent: visibleInvoices.filter(i => i.status === 'sent').length, draft: visibleInvoices.filter(i => i.status === 'draft').length,
+    total: visibleInvoices.length, 
+    paid: visibleInvoices.filter(i => i.status === 'paid').length,
+    sent: visibleInvoices.filter(i => i.status === 'sent').length, 
+    draft: visibleInvoices.filter(i => i.status === 'draft').length,
   }), [visibleInvoices]);
 
   return (
@@ -131,7 +149,9 @@ export default function Invoices({ ctx, toast, user }) {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-ink-400 text-sm mt-1">Bill your clients and track payments</p>
+          <p className="text-ink-400 text-sm mt-1">
+            {isAdmin ? 'Manage all team invoices' : 'Your invoices and billing'}
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setAutoGenerateOpen(true)} className="btn-ghost border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">
@@ -184,7 +204,15 @@ export default function Invoices({ ctx, toast, user }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs uppercase tracking-wider text-ink-400 border-b border-ink-600/60"><th className="px-5 py-3 font-semibold">Invoice #</th><th className="px-5 py-3 font-semibold">Client</th><th className="px-5 py-3 font-semibold">Issue Date</th><th className="px-5 py-3 font-semibold">Due Date</th><th className="px-5 py-3 font-semibold text-right">Amount</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 font-semibold text-right">Actions</th></tr></thead>
+              <thead><tr className="text-left text-xs uppercase tracking-wider text-ink-400 border-b border-ink-600/60">
+                <th className="px-5 py-3 font-semibold">Invoice #</th>
+                <th className="px-5 py-3 font-semibold">Client</th>
+                <th className="px-5 py-3 font-semibold">Issue Date</th>
+                <th className="px-5 py-3 font-semibold">Due Date</th>
+                <th className="px-5 py-3 font-semibold text-right">Amount</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                {isAdmin && <th className="px-5 py-3 font-semibold text-right">Actions</th>}
+              </tr></thead>
               <tbody>
                 {visibleInvoices.map((inv) => {
                   const client = clients.find(c => c.id === inv.clientId);
@@ -196,8 +224,36 @@ export default function Invoices({ ctx, toast, user }) {
                       <td className="px-5 py-3.5 text-ink-300 tabular-nums">{new Date(inv.issueDate).toLocaleDateString()}</td>
                       <td className="px-5 py-3.5 text-ink-300 tabular-nums">{new Date(inv.dueDate).toLocaleDateString()}</td>
                       <td className="px-5 py-3.5 text-right font-bold tabular-nums">{formatCurrency(inv.total, inv.currency)}</td>
-                      <td className="px-5 py-3.5"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${STATUS_CONFIG[inv.status]?.color || STATUS_CONFIG.draft.color}`}><StatusIcon className="h-3 w-3" /> {STATUS_CONFIG[inv.status]?.label || 'Draft'}</span></td>
-                      <td className="px-5 py-3.5 text-right"><div className="inline-flex gap-1"><button onClick={() => setPreviewInv(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer" title="View/Print"><Printer className="h-3.5 w-3.5" /></button><button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer"><FileText className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(inv)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-ink-300 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button></div></td>
+                      <td className="px-5 py-3.5">
+                        {/* ✅ Members see badge only, Admin sees dropdown */}
+                        {isAdmin ? (
+                          <select 
+                            value={inv.status} 
+                            onChange={(e) => {
+                              updateInvoice(inv.id, { status: e.target.value });
+                              toast(`Status updated to ${STATUS_CONFIG[e.target.value]?.label}`, 'success');
+                            }}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-lg border outline-none cursor-pointer ${STATUS_CONFIG[inv.status]?.color || STATUS_CONFIG.draft.color}`}
+                          >
+                            <option value="draft">Draft</option>
+                            <option value="sent">Sent</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${STATUS_CONFIG[inv.status]?.color || STATUS_CONFIG.draft.color}`}>
+                            <StatusIcon className="h-3 w-3" /> {STATUS_CONFIG[inv.status]?.label || 'Draft'}
+                          </span>
+                        )}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="inline-flex gap-1">
+                            <button onClick={() => setPreviewInv(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer" title="View/Print"><Printer className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer"><FileText className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => handleDelete(inv)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-ink-300 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -207,6 +263,7 @@ export default function Invoices({ ctx, toast, user }) {
         )}
       </div>
 
+      {/* Manual Create/Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Invoice' : 'New Invoice'} size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -221,18 +278,22 @@ export default function Invoices({ ctx, toast, user }) {
             <div className="text-right mt-2 text-sm font-bold text-ink-100">Total: {formatCurrency(calculateTotal(form.items), form.currency)}</div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input"><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option></select></div>
-            <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input" /></div>
+            {/* ✅ Status dropdown only for Admin */}
+            {isAdmin && (
+              <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input"><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option></select></div>
+            )}
+            <div className={isAdmin ? '' : 'col-span-2'}><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input" /></div>
             <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label><select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="input"><option value="USD">USD ($)</option><option value="PKR">PKR (Rs)</option></select></div>
           </div>
           <div className="flex gap-2 pt-2"><button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button><button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01]">{editing ? 'Save Changes' : 'Create Invoice'}</button></div>
         </div>
       </Modal>
 
+      {/* Auto-Generate Modal */}
       <Modal open={autoGenerateOpen} onClose={() => setAutoGenerateOpen(false)} title="Auto-Generate Invoice" size="md">
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-            <div className="flex items-start gap-3"><Sparkles className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" /><div><h3 className="text-sm font-semibold text-emerald-400 mb-1">Smart Invoice Generation</h3><p className="text-xs text-ink-300">Automatically create an invoice from all completed and paid transactions for a specific client.</p></div></div>
+            <div className="flex items-start gap-3"><Sparkles className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" /><div><h3 className="text-sm font-semibold text-emerald-400 mb-1">Smart Invoice Generation</h3><p className="text-xs text-ink-300">Automatically create an invoice from your completed and paid transactions.</p></div></div>
           </div>
           <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Select Client</label><select value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} className="input"><option value="">— Choose a client —</option>{uninvoicedWork.map(w => (<option key={w.clientId} value={w.clientId}>{w.client.name} ({w.items.length} transactions • {formatCurrency(w.total, w.currency)})</option>))}</select></div>
           {selectedClient && (
@@ -246,6 +307,7 @@ export default function Invoices({ ctx, toast, user }) {
         </div>
       </Modal>
 
+      {/* Print Preview Modal */}
       {previewInv && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in no-print">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewInv(null)} />

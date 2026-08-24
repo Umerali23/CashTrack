@@ -92,10 +92,26 @@ export const useCashTrack = (user) => {
     return (data.transactions || []).filter(t => t.assigneeId === user.id);
   }, [data.transactions, user]);
 
-  const effectiveTasks = useMemo(() => {
+    const effectiveTasks = useMemo(() => {
     if (!user || user.role === 'admin') return data.tasks || [];
     return (data.tasks || []).filter(t => t.assigneeId === user.id);
   }, [data.tasks, user]);
+
+  // ✅ NEW: Filter invoices by role
+  const effectiveInvoices = useMemo(() => {
+    if (!user || user.role === 'admin') return data.invoices || [];
+    // Members see invoices they created OR invoices containing their transactions
+    const memberTxIds = new Set(
+      (data.transactions || [])
+        .filter(t => t.assigneeId === user.id)
+        .map(t => t.id)
+    );
+    return (data.invoices || []).filter(inv => {
+      if (inv.createdBy === user.id) return true;
+      return inv.items?.some(item => memberTxIds.has(item.txId));
+    });
+  }, [data.invoices, data.transactions, user]);
+
 
   // --- Aggregates ---
   const aggregates = useMemo(() => {
@@ -167,6 +183,7 @@ export const useCashTrack = (user) => {
     addClient, updateClient, deleteClient,
     addTeamMember, updateTeamMember, deleteTeamMember,
     addTask, updateTask, deleteTask,
+    invoices: effectiveInvoices,
         addInvoice, updateInvoice, deleteInvoice, // ✅ Add these
     toDisplay, aggregates, monthlySeries, topClients, earningsByMember 
   };
