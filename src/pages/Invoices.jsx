@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, FileText, Printer, Trash2, CheckCircle2, Clock, Send } from 'lucide-react';
+import { Plus, Search, FileText, Printer, Trash2, CheckCircle2, Clock, Send, Sparkles, AlertCircle } from 'lucide-react';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
@@ -11,19 +11,65 @@ const STATUS_CONFIG = {
   'overdue': { label: 'Overdue', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20', icon: Clock },
 };
 
-const EMPTY_FORM = { invoiceNumber: '', clientId: '', items: [{ description: '', amount: '' }], status: 'draft', dueDate: new Date().toISOString().slice(0, 10), currency: 'USD' };
+const EMPTY_FORM = { 
+  invoiceNumber: '', 
+  clientId: '', 
+  items: [{ description: '', amount: '' }], 
+  status: 'draft', 
+  dueDate: new Date().toISOString().slice(0, 10), 
+  currency: 'USD' 
+};
 
 export default function Invoices({ ctx, toast, user }) {
   const { data, toDisplay, addInvoice, updateInvoice, deleteInvoice } = ctx;
   const clients = data?.clients || [];
   const invoices = data?.invoices || [];
+  const transactions = data?.transactions || [];
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
+  const [autoGenerateOpen, setAutoGenerateOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState('');
   const [previewInv, setPreviewInv] = useState(null);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+
+  // ✅ Find uninvoiced transactions per client
+  const uninvoicedWork = useMemo(() => {
+    const invoicedTxIds = new Set();
+    invoices.forEach(inv => {
+      // If you want to track which transactions are invoiced, add txId to invoice
+      // For now, we'll use a simple heuristic: paid transactions without invoices
+    });
+
+    const clientWork = {};
+    
+    transactions.forEach(tx => {
+      if (tx.type !== 'income' || tx.status !== 'paid' || !tx.clientId) return;
+      
+      if (!clientWork[tx.clientId]) {
+        clientWork[tx.clientId] = { items: [], total: 0, currency: tx.currency };
+      }
+      
+      clientWork[tx.clientId].items.push({
+        description: tx.description || `Work completed on ${new Date(tx.date).toLocaleDateString()}`,
+        amount: tx.amount,
+        txId: tx.id,
+        date: tx.date
+      });
+      clientWork[tx.clientId].total += toDisplay(tx.amount, tx.currency);
+      clientWork[tx.clientId].currency = tx.currency;
+    });
+
+    return Object.entries(clientWork).map(([clientId, data]) => ({
+      clientId,
+      client: clients.find(c => c.id === clientId),
+      items: data.items,
+      total: data.total,
+      currency: data.currency
+    })).filter(cw => cw.client);
+  }, [transactions, invoices, clients, toDisplay]);
 
   const visibleInvoices = useMemo(() => {
     return invoices
@@ -42,6 +88,29 @@ export default function Invoices({ ctx, toast, user }) {
     setEditing(inv);
     setForm({ invoiceNumber: inv.invoiceNumber, clientId: inv.clientId || '', items: inv.items, status: inv.status, dueDate: inv.dueDate, currency: inv.currency });
     setModalOpen(true);
+  };
+
+  // ✅ Auto-generate invoice for selected client
+  const handleAutoGenerate = () => {
+    if (!selectedClient) return toast('Please select a client', 'error');
+    
+    const work = uninvoicedWork.find(w => w.clientId === selectedClient);
+    if (!work || work.items.length === 0) return toast('No uninvoiced work found for this client', 'error');
+
+    const invoiceData = {
+      invoiceNumber: `INV-${String(invoices.length + 1).padStart(3, '0')}`,
+      clientId: selectedClient,
+      items: work.items.map(item => ({ description: item.description, amount: item.amount })),
+      status: 'draft',
+      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // 14 days from now
+      currency: work.currency,
+      total: work.total
+    };
+
+    addInvoice(invoiceData);
+    toast(`Invoice generated for ${work.client.name}`, 'success');
+    setAutoGenerateOpen(false);
+    setSelectedClient('');
   };
 
   const handleItemChange = (index, field, value) => {
@@ -84,7 +153,7 @@ export default function Invoices({ ctx, toast, user }) {
   };
 
   const handlePrint = () => {
-    setPreviewInv(null); // Close modal first to trigger print cleanly
+    setPreviewInv(null);
     setTimeout(() => window.print(), 100);
   };
 
@@ -102,10 +171,33 @@ export default function Invoices({ ctx, toast, user }) {
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Invoices</h1>
           <p className="text-ink-400 text-sm mt-1">Bill your clients and track payments</p>
         </div>
-        <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
-          <Plus className="h-4 w-4" strokeWidth={2.5} /> New Invoice
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setAutoGenerateOpen(true)} className="btn-ghost border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">
+            <Sparkles className="h-4 w-4" /> Auto-Generate
+          </button>
+          <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
+            <Plus className="h-4 w-4" strokeWidth={2.5} /> New Invoice
+          </button>
+        </div>
       </div>
+
+      {/* Uninvoiced Work Alert */}
+      {uninvoicedWork.length > 0 && (
+        <div className="glass rounded-2xl p-4 border border-emerald-500/20 bg-emerald-500/5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-emerald-400 mb-1">You have uninvoiced work!</h3>
+              <p className="text-xs text-ink-300 mb-3">
+                {uninvoicedWork.reduce((sum, w) => sum + w.items.length, 0)} completed transactions across {uninvoicedWork.length} clients haven't been invoiced yet.
+              </p>
+              <button onClick={() => setAutoGenerateOpen(true)} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer">
+                Generate Invoices Now →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Total</div><div className="text-xl font-bold mt-1">{stats.total}</div></div>
@@ -129,7 +221,20 @@ export default function Invoices({ ctx, toast, user }) {
 
       <div className="glass rounded-2xl overflow-hidden">
         {visibleInvoices.length === 0 ? (
-          <EmptyState title="No invoices found" description="Create your first invoice to bill a client." action={<button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Invoice</button>} />
+          <EmptyState 
+            title="No invoices found" 
+            description="Create your first invoice to bill a client or use auto-generate." 
+            action={
+              <div className="flex gap-2">
+                <button onClick={() => setAutoGenerateOpen(true)} className="btn-ghost border border-emerald-500/40 text-emerald-400">
+                  <Sparkles className="h-4 w-4" /> Auto-Generate
+                </button>
+                <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
+                  <Plus className="h-4 w-4" /> New Invoice
+                </button>
+              </div>
+            } 
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -176,7 +281,7 @@ export default function Invoices({ ctx, toast, user }) {
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Manual Create/Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Invoice' : 'New Invoice'} size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -241,7 +346,67 @@ export default function Invoices({ ctx, toast, user }) {
         </div>
       </Modal>
 
-      {/* ✅ Print Preview Modal */}
+      {/* ✅ Auto-Generate Modal */}
+      <Modal open={autoGenerateOpen} onClose={() => setAutoGenerateOpen(false)} title="Auto-Generate Invoice" size="md">
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-semibold text-emerald-400 mb-1">Smart Invoice Generation</h3>
+                <p className="text-xs text-ink-300">Automatically create an invoice from all completed and paid transactions for a specific client.</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Select Client</label>
+            <select 
+              value={selectedClient} 
+              onChange={(e) => setSelectedClient(e.target.value)} 
+              className="input"
+            >
+              <option value="">— Choose a client —</option>
+              {uninvoicedWork.map(w => (
+                <option key={w.clientId} value={w.clientId}>
+                  {w.client.name} ({w.items.length} transactions • {formatCurrency(w.total, w.currency)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedClient && (
+            <div className="p-4 rounded-xl bg-ink-900/50 border border-ink-600/50">
+              <div className="text-xs font-semibold text-ink-400 mb-3">Preview of Invoice Items:</div>
+              {uninvoicedWork.find(w => w.clientId === selectedClient)?.items.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm py-2 border-b border-ink-600/40 last:border-0">
+                  <span className="text-ink-300">{item.description}</span>
+                  <span className="font-semibold tabular-nums">{formatCurrency(item.amount, uninvoicedWork.find(w => w.clientId === selectedClient).currency)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between mt-3 pt-3 border-t-2 border-ink-600">
+                <span className="font-bold text-ink-100">Total</span>
+                <span className="font-bold text-emerald-400 tabular-nums">
+                  {formatCurrency(uninvoicedWork.find(w => w.clientId === selectedClient)?.total || 0, uninvoicedWork.find(w => w.clientId === selectedClient)?.currency)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => setAutoGenerateOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
+            <button 
+              onClick={handleAutoGenerate} 
+              disabled={!selectedClient}
+              className="btn-primary flex-1 bg-emerald-500 text-white hover:bg-emerald-600 hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Generate Invoice
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Print Preview Modal (Keep your existing one) */}
       {previewInv && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in no-print">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewInv(null)} />
@@ -254,7 +419,6 @@ export default function Invoices({ ctx, toast, user }) {
               </div>
             </div>
             
-            {/* Actual Printable Invoice Content */}
             <div className="p-12 print-only-block">
               <div className="flex justify-between items-start mb-12">
                 <div>
