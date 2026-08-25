@@ -45,7 +45,7 @@ function AppContent() {
       
       <main className="lg:pl-64 pt-16 lg:pt-0 pb-24 lg:pb-8 px-4 sm:px-6 lg:px-10 relative">
         <div className="max-w-7xl mx-auto">
-          {page === 'dashboard' && <Dashboard ctx={ctx} onNewTransaction={handleNewTransaction} onSelectClient={handleSelectClient} user={user} />}
+          {page === 'dashboard' && <Dashboard ctx={ctx} onSelectClient={handleSelectClient} user={user} />}
           {page === 'transactions' && <Transactions ctx={ctx} toast={toast} newTxTrigger={newTxTrigger} user={user} />}
           {page === 'clients' && <Clients ctx={ctx} toast={toast} selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onClearSelection={() => setSelectedClientId(null)} user={user} />}
           {page === 'team' && <Team ctx={ctx} toast={toast} user={user} />}
