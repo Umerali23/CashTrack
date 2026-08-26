@@ -7,17 +7,26 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setLoading(true);
     setError('');
-    const result = login(email, password);
-    if (!result.success) setError(result.error);
-    // If successful, context updates and App.jsx automatically renders the dashboard!
+    
+    // Simulate a brief network delay for a premium feel
+    setTimeout(() => {
+      const result = login(email, password);
+      if (!result.success) {
+        setError(result.error);
+      }
+      setLoading(false);
+    }, 600);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-ink-950 relative overflow-hidden">
+      {/* Ambient Background */}
       <div className="absolute top-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-emerald-500/10 blur-[100px]" />
       <div className="absolute bottom-[-10%] right-[-10%] h-[600px] w-[600px] rounded-full bg-violet-500/10 blur-[100px]" />
 
@@ -42,7 +51,14 @@ export default function Login() {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input pl-10" placeholder="admin@cashtrack.com" required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input pl-10"
+                placeholder="name@company.com"
+                required
+              />
             </div>
           </div>
 
@@ -50,23 +66,25 @@ export default function Login() {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input pl-10" placeholder="••••••••" required />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input pl-10"
+                placeholder="••••••••"
+                required
+              />
             </div>
           </div>
 
-          <button type="submit" className="w-full btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
-            Sign In
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        <div className="mt-8 pt-6 border-t border-ink-600/50">
-          <p className="text-[11px] text-center text-ink-400 uppercase tracking-wider mb-3">Demo Credentials</p>
-          <div className="space-y-2 text-xs text-ink-300">
-            <div className="flex justify-between p-2 rounded-lg bg-ink-800/50"><span>Admin:</span><span className="font-mono text-emerald-400">admin@cashtrack.com / admin123</span></div>
-            <div className="flex justify-between p-2 rounded-lg bg-ink-800/50"><span>Umer:</span><span className="font-mono text-blue-400">umer@cashtrack.com / umer123</span></div>
-            <div className="flex justify-between p-2 rounded-lg bg-ink-800/50"><span>Laiba:</span><span className="font-mono text-pink-400">laiba@cashtrack.com / laiba123</span></div>
-          </div>
-        </div>
       </div>
     </div>
   );
