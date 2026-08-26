@@ -1,61 +1,72 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cashtrack_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (email, password) => {
-    // 1. Admin Login
-    if (email === 'admin@cashtrack.com' && password === 'admin123') {
-      const adminUser = { id: 'admin', name: 'Admin', role: 'admin', email, avatarColor: 'from-slate-400 to-slate-600' };
-      setUser(adminUser);
-      localStorage.setItem('cashtrack_user', JSON.stringify(adminUser));
-      return { success: true };
-    }
-    
-    // 2. Check localStorage for dynamically added team members
-    try {
-      const savedData = localStorage.getItem('cashtrack_data');
-      if (savedData) {
-        const data = JSON.parse(savedData);
-        const member = data.team?.find(u => u.email === email && u.password === password);
-        if (member) {
-          setUser({ ...member, role: 'member' });
-          localStorage.setItem('cashtrack_user', JSON.stringify({ ...member, role: 'member' }));
-          return { success: true };
-        }
+  // Check if someone is already logged in when page loads
+  useEffect(() => {
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        // Fetch their profile details
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        setUser({ ...profile, role: profile?.role || 'member' });
       }
-    } catch (e) { console.error(e); }
+      setLoading(false);
+    };
+    getSession();
+  }, []);
 
-    // 3. Fallback to dummy data for first-time load
-    const teamMock = [
-      { id: 'u1', name: 'Umer', role: 'member', email: 'umer@cashtrack.com', password: 'umer123', avatarColor: 'from-blue-400 to-indigo-500' },
-      { id: 'u2', name: 'Laiba', role: 'member', email: 'laiba@cashtrack.com', password: 'laiba123', avatarColor: 'from-pink-400 to-rose-500' }
-    ];
-    const member = teamMock.find(m => m.email === email && m.password === password);
-    if (member) {
-      setUser(member);
-      localStorage.setItem('cashtrack_user', JSON.stringify(member));
+  const login = async (email, password) => {
+    // Special Admin Override (Since Admin isn't in the DB yet)
+    if (email === 'admin@cashtrack.com' && password === 'admin123') {
+      setUser({ id: 'admin', name: 'Admin', role: 'admin', email, avatarColor: 'from-slate-400 to-slate-600' });
       return { success: true };
     }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
-    return { success: false, error: 'Invalid email or password' };
+    if (error) return { success: false, error: error.message };
+
+    if (data.user) {
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+      setUser({ ...profile, role: profile?.role || 'member' });
+      return { success: true };
+    }
+    return { success: false, error: 'Login failed' };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('cashtrack_user');
+  };
+
+  // Function for Admin to create new team members
+  const createTeamMember = async (email, password, name, role, avatarColor) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name, role, avatar_color: avatarColor } // This sends data to our SQL Trigger!
+      }
+    });
+    
+    if (error) return { success: false, error: error.message };
+    return { success: true, user: data.user };
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, createTeamMember, loading }}>
       {children}
     </AuthContext.Provider>
   );

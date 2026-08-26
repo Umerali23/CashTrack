@@ -1,12 +1,16 @@
 import { useState, useMemo } from 'react';
-import { Plus, X, Pencil, Trash2, Users, Copy, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Copy, Check } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
 
 const AVATAR_GRADIENTS = [
-  'from-blue-400 to-indigo-500', 'from-pink-400 to-rose-500', 'from-emerald-400 to-teal-500',
-  'from-amber-400 to-orange-500', 'from-violet-400 to-fuchsia-500',
+  'from-blue-400 to-indigo-500',
+  'from-pink-400 to-rose-500',
+  'from-emerald-400 to-teal-500',
+  'from-amber-400 to-orange-500',
+  'from-violet-400 to-fuchsia-500',
 ];
 
 const EMPTY_FORM = { name: '', role: '', avatarColor: AVATAR_GRADIENTS[0] };
@@ -21,10 +25,11 @@ const generateCredentials = (name) => {
   };
 };
 
-export default function Team({ ctx, toast, user }) {
+export default function Team({ ctx, toast }) {
+  const { createTeamMember } = useAuth();
   const { data, displayCurrency, toDisplay, addTeamMember, updateTeamMember, deleteTeamMember } = ctx;
   const currency = displayCurrency === 'ORIGINAL' ? 'PKR' : displayCurrency;
-  const team = data?.team || [];
+  const team = data?.profiles || [];
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -67,33 +72,38 @@ export default function Team({ ctx, toast, user }) {
     return Object.keys(e).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
-    
-    let payload = { ...form };
-    
-    // If new member, generate and attach credentials
-    if (!editing) {
-      const creds = generateCredentials(form.name);
-      payload = { ...payload, ...creds };
-      setGeneratedCreds(creds); // Show to admin
+
+    // If editing existing member, just update the profile table
+    if (editing) {
+      const payload = { ...form };
+      await updateTeamMember(editing.id, payload);
+      toast('Team member updated', 'success');
+      setModalOpen(false);
+      return;
     }
 
-    if (editing) {
-      updateTeamMember(editing.id, payload);
-      toast('Team member updated', 'success');
+    // If NEW member, we must create their Auth account
+    const creds = generateCredentials(form.name);
+    const payload = { ...form, ...creds };
+
+    // 1. Create the real user account
+    const result = await createTeamMember(creds.email, creds.password, form.name, form.role, form.avatarColor);
+
+    if (result.success) {
+      toast('Member added! Credentials generated.', 'success');
+      setGeneratedCreds(creds); // Show credentials to Admin
+      // Note: Supabase might log you in as the new user.
+      // If the screen changes, just log out and log back in as Admin!
     } else {
-      addTeamMember(payload);
-      toast('Team member added! Credentials generated.', 'success');
+      toast(result.error || 'Failed to create user', 'error');
     }
-    // Don't close modal immediately if new, so admin can see credentials
-    if (!editing) return; 
-    setModalOpen(false);
   };
 
-  const handleDelete = (m) => {
+  const handleDelete = async (m) => {
     if (!window.confirm(`Remove "${m.name}"?`)) return;
-    deleteTeamMember(m.id);
+    await deleteTeamMember(m.id);
     toast('Team member removed', 'info');
   };
 
@@ -132,8 +142,8 @@ export default function Team({ ctx, toast, user }) {
                 </div>
                 <div className="font-bold text-lg tracking-tight">{member.name}</div>
                 <div className="text-xs text-ink-400 mb-4">{member.role}</div>
-                
-                {/* ✅ Display Auto-Generated Credentials */}
+
+                {/* Display Auto-Generated Credentials */}
                 {member.email && member.password && (
                   <div className="mb-4 p-3 rounded-xl bg-ink-900/60 border border-ink-600/50 space-y-2">
                     <div className="flex items-center justify-between text-xs">

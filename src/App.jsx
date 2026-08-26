@@ -8,13 +8,13 @@ import Transactions from './pages/Transactions';
 import Clients from './pages/Clients';
 import Team from './pages/Team';
 import Tasks from './pages/Tasks';
-import Analytics from './pages/Analytics';
-import { useCashTrack } from './hooks/useCashTrack';
 import Invoices from './pages/Invoices';
+import Analytics from './pages/Analytics';
 import Earnings from './pages/Earnings';
+import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const ctx = useCashTrack(user);
   
   const [page, setPage] = useState('dashboard');
@@ -22,16 +22,38 @@ function AppContent() {
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [newTxTrigger, setNewTxTrigger] = useState(0);
 
-  if (!user) return <Login />;
-
+  // ✅ ALL hooks must be called BEFORE any conditional returns
   const toast = useCallback((message, type = 'success') => {
     const id = `toast_${Date.now()}_${Math.random()}`;
     setToasts((t) => [...t, { id, message, type }]);
   }, []);
-  const removeToast = useCallback((id) => { setToasts((t) => t.filter((x) => x.id !== id)); }, []);
+  
+  const removeToast = useCallback((id) => {
+    setToasts((t) => t.filter((x) => x.id !== id));
+  }, []);
 
-  const handleNewTransaction = () => { setPage('transactions'); setNewTxTrigger((n) => n + 1); };
-  const handleSelectClient = (id) => { setSelectedClientId(id); setPage('clients'); };
+  const handleNewTransaction = () => {
+    setPage('transactions');
+    setNewTxTrigger((n) => n + 1);
+  };
+  
+  const handleSelectClient = (id) => {
+    setSelectedClientId(id);
+    setPage('clients');
+  };
+
+  // ✅ Now we can do conditional rendering AFTER all hooks
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-950">
+        <div className="text-ink-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   return (
     <div className={`min-h-screen ${ctx.theme === 'dark' ? 'dark bg-ink-950 text-ink-100' : 'light bg-zinc-50 text-zinc-900'} relative`}>
@@ -41,7 +63,16 @@ function AppContent() {
       </div>
       <div className="fixed inset-0 bg-grid pointer-events-none opacity-60" />
       
-      <Sidebar page={page} setPage={setPage} displayCurrency={ctx.displayCurrency} setDisplayCurrency={ctx.setDisplayCurrency} theme={ctx.theme} setTheme={ctx.setTheme} user={user} onLogout={logout} />
+      <Sidebar 
+        page={page} 
+        setPage={setPage} 
+        displayCurrency={ctx.displayCurrency} 
+        setDisplayCurrency={ctx.setDisplayCurrency} 
+        theme={ctx.theme} 
+        setTheme={ctx.setTheme}
+        user={user}
+        onLogout={logout}
+      />
       
       <main className="lg:pl-64 pt-16 lg:pt-0 pb-24 lg:pb-8 px-4 sm:px-6 lg:px-10 relative">
         <div className="max-w-7xl mx-auto">
@@ -50,9 +81,10 @@ function AppContent() {
           {page === 'clients' && <Clients ctx={ctx} toast={toast} selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onClearSelection={() => setSelectedClientId(null)} user={user} />}
           {page === 'team' && <Team ctx={ctx} toast={toast} user={user} />}
           {page === 'tasks' && <Tasks ctx={ctx} toast={toast} user={user} />}
-          {page === 'analytics' && <Analytics ctx={ctx} user={user} />}
           {page === 'invoices' && <Invoices ctx={ctx} toast={toast} user={user} />}
-        {page === 'earnings' && <Earnings ctx={ctx} user={user} />}</div>
+          {page === 'analytics' && <Analytics ctx={ctx} user={user} />}
+          {page === 'earnings' && <Earnings ctx={ctx} user={user} />}
+        </div>
       </main>
       <Toast toasts={toasts} removeToast={removeToast} />
     </div>
