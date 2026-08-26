@@ -72,7 +72,7 @@ export default function Team({ ctx, toast }) {
     return Object.keys(e).length === 0;
   };
 
-  const handleSave = async () => {
+    const handleSave = async () => {
     if (!validate()) return;
 
     // If editing existing member, just update the profile table
@@ -84,20 +84,31 @@ export default function Team({ ctx, toast }) {
       return;
     }
 
-    // If NEW member, we must create their Auth account
+    // For NEW members: Generate credentials and insert manually
     const creds = generateCredentials(form.name);
-    const payload = { ...form, ...creds };
+    
+    try {
+      // 1. Insert into auth.users table directly (bypasses email)
+      const { error: authError } = await supabase.rpc('create_user_manually', {
+        user_email: creds.email,
+        user_password: creds.password,
+        user_name: form.name,
+        user_role: form.role,
+        user_avatar_color: form.avatarColor
+      });
 
-    // 1. Create the real user account
-    const result = await createTeamMember(creds.email, creds.password, form.name, form.role, form.avatarColor);
+      if (authError) throw authError;
 
-    if (result.success) {
       toast('Member added! Credentials generated.', 'success');
-      setGeneratedCreds(creds); // Show credentials to Admin
-      // Note: Supabase might log you in as the new user.
-      // If the screen changes, just log out and log back in as Admin!
-    } else {
-      toast(result.error || 'Failed to create user', 'error');
+      setGeneratedCreds(creds);
+      
+      // Refresh the team list
+      const { data: updatedProfiles } = await supabase.from('profiles').select('*');
+      setData(prev => ({ ...prev, profiles: updatedProfiles || [] }));
+      
+    } catch (error) {
+      console.error('Error creating user:', error);
+      toast(error.message || 'Failed to create user', 'error');
     }
   };
 
