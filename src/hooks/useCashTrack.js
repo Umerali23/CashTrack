@@ -60,17 +60,32 @@ export const useCashTrack = (user) => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
-  // --- 3. ASYNC CRUD FUNCTIONS ---
+    // --- 3. ASYNC CRUD FUNCTIONS ---
 
   // CLIENTS
   const addClient = async (c) => {
-    const { data: newClient, error } = await supabase.from('clients').insert([c]).select().single();
+    // Map camelCase to snake_case for the database
+    const dbClient = { 
+      name: c.name, 
+      company: c.company, 
+      email: c.email, 
+      avatar_color: c.avatarColor 
+    };
+    const { data: newClient, error } = await supabase.from('clients').insert([dbClient]).select().single();
     if (!error) setData(prev => ({ ...prev, clients: [newClient, ...prev.clients] }));
   };
+  
   const updateClient = async (id, patch) => {
-    await supabase.from('clients').update(patch).eq('id', id);
+    const dbPatch = { 
+      name: patch.name, 
+      company: patch.company, 
+      email: patch.email, 
+      avatar_color: patch.avatarColor 
+    };
+    await supabase.from('clients').update(dbPatch).eq('id', id);
     setData(prev => ({ ...prev, clients: prev.clients.map(c => c.id === id ? { ...c, ...patch } : c) }));
   };
+
   const deleteClient = async (id) => {
     await supabase.from('clients').delete().eq('id', id);
     setData(prev => ({ 
@@ -82,13 +97,28 @@ export const useCashTrack = (user) => {
 
   // PROFILES (TEAM)
   const addTeamMember = async (m) => {
-    const { data: newMember, error } = await supabase.from('profiles').insert([m]).select().single();
+    const dbMember = { 
+      name: m.name, 
+      role: m.role, 
+      email: m.email, 
+      password: m.password, 
+      avatar_color: m.avatarColor 
+    };
+    const { data: newMember, error } = await supabase.from('profiles').insert([dbMember]).select().single();
     if (!error) setData(prev => ({ ...prev, profiles: [newMember, ...prev.profiles] }));
   };
+  
   const updateTeamMember = async (id, patch) => {
-    await supabase.from('profiles').update(patch).eq('id', id);
+    const dbPatch = { 
+      name: patch.name, 
+      role: patch.role, 
+      email: patch.email, 
+      avatar_color: patch.avatarColor 
+    };
+    await supabase.from('profiles').update(dbPatch).eq('id', id);
     setData(prev => ({ ...prev, profiles: prev.profiles.map(m => m.id === id ? { ...m, ...patch } : m) }));
   };
+
   const deleteTeamMember = async (id) => {
     await supabase.from('profiles').delete().eq('id', id);
     setData(prev => ({ 
