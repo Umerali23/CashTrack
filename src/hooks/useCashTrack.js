@@ -337,6 +337,7 @@ export const useCashTrack = (user) => {
 
   return { 
     data: normalizeData, // Pass normalized data to UI
+    setData,
     transactions: effectiveTransactions, 
     tasks: effectiveTasks, 
     invoices: effectiveInvoices, 
