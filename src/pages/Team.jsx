@@ -16,7 +16,6 @@ const AVATAR_GRADIENTS = [
 
 const EMPTY_FORM = { name: '', role: '', avatarColor: AVATAR_GRADIENTS[0] };
 
-// Helper to generate credentials
 const generateCredentials = (name) => {
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
   const randomNum = Math.floor(Math.random() * 9000) + 1000;
@@ -28,7 +27,7 @@ const generateCredentials = (name) => {
 
 export default function Team({ ctx, toast }) {
   const { user } = useAuth();
-  const { data, displayCurrency, toDisplay, addTeamMember, updateTeamMember, deleteTeamMember } = ctx;
+  const { data, displayCurrency, toDisplay, updateTeamMember, deleteTeamMember, addTeamMember } = ctx;
   const currency = displayCurrency === 'ORIGINAL' ? 'PKR' : displayCurrency;
   const team = data?.profiles || [];
 
@@ -75,48 +74,43 @@ export default function Team({ ctx, toast }) {
     return Object.keys(e).length === 0;
   };
 
-    const handleSave = async () => {
+  const handleSave = async () => {
     if (!validate()) return;
-
     setLoading(true);
 
     try {
       if (editing) {
         // Update existing member
-        const payload = { ...form };
-        await updateTeamMember(editing.id, payload);
+        await updateTeamMember(editing.id, form);
         toast('Team member updated', 'success');
         setModalOpen(false);
       } else {
-        // Create new member - Direct approach
+        // Create new member
         const creds = generateCredentials(form.name);
-        const newId = crypto.randomUUID(); // Generate UUID
         
-        // 1. First create the profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: newId,
-            name: form.name,
-            role: form.role,
-            email: creds.email,
-            avatar_color: form.avatarColor,
-            password: creds.password
-          }]);
+        const result = await addTeamMember({
+          email: creds.email,
+          password: creds.password,
+          name: form.name,
+          role: form.role,
+          avatarColor: form.avatarColor
+        });
 
-        if (profileError) throw profileError;
-
-        toast('Profile created! Note: User must be added to Auth manually for now.', 'success');
-        setGeneratedCreds(creds);
-        
-        // Refresh team list
-        const { data: updatedProfiles } = await supabase.from('profiles').select('*');
-        if (updatedProfiles) {
-          ctx.setData(prev => ({ ...prev, profiles: updatedProfiles }));
+        if (result.success) {
+          toast('Team member created successfully!', 'success');
+          setGeneratedCreds(creds);
+          
+          // Refresh team list
+          const { data: updatedProfiles } = await supabase.from('profiles').select('*');
+          if (updatedProfiles) {
+            ctx.setData(prev => ({ ...prev, profiles: updatedProfiles }));
+          }
+        } else {
+          throw new Error(result.error || 'Failed to create member');
         }
       }
     } catch (error) {
-      console.error('Error creating member:', error);
+      console.error('Error:', error);
       toast(error.message || 'Failed to create team member', 'error');
     } finally {
       setLoading(false);
@@ -136,10 +130,6 @@ export default function Team({ ctx, toast }) {
     toast('Copied to clipboard', 'success');
   };
 
-  const togglePasswordVisibility = (memberId) => {
-    setShowPassword(prev => ({ ...prev, [memberId]: !prev[memberId] }));
-  };
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -156,75 +146,37 @@ export default function Team({ ctx, toast }) {
         <EmptyState 
           title="No team members yet" 
           description="Add your first team member to start collaborating." 
-          action={
-            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
-              <Plus className="h-4 w-4" /> Add Member
-            </button>
-          } 
+          action={<button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> Add Member</button>} 
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {memberStats.map(({ member, earnings }) => {
             const initials = (member.name || 'User').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-            const isPasswordVisible = showPassword[member.id];
-            
             return (
               <div key={member.id} className="glass rounded-2xl p-5 group hover:border-ink-500 transition-all duration-300">
                 <div className="flex items-start justify-between mb-4">
-                  <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                  <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${member.avatar_color || member.avatarColor} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
                     {initials}
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(member)} className="p-1.5 rounded-lg hover:bg-ink-700/50 cursor-pointer">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => handleDelete(member)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400 cursor-pointer">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <button onClick={() => openEdit(member)} className="p-1.5 rounded-lg hover:bg-ink-700/50 cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => handleDelete(member)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
                 
                 <div className="font-bold text-lg tracking-tight">{member.name || 'Unnamed Member'}</div>
                 <div className="text-xs text-ink-400 mb-4">{member.role || 'Team Member'}</div>
 
-                {/* Credentials Section - Only visible to Admin */}
                 {member.email && (
                   <div className="mb-4 p-3 rounded-xl bg-ink-900/60 border border-ink-600/50 space-y-2">
                     <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Login Credentials</div>
                     
-                    {/* Email */}
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-ink-300 truncate mr-2 flex-1">{member.email}</span>
-                      <button 
-                        onClick={() => copyToClipboard(member.email, 'email', member.id)} 
-                        className="text-ink-300 hover:text-white cursor-pointer flex-shrink-0 ml-1"
-                      >
+                      <button onClick={() => copyToClipboard(member.email, 'email', member.id)} className="text-ink-300 hover:text-white cursor-pointer flex-shrink-0 ml-1">
                         {copiedField === `email-${member.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
                       </button>
                     </div>
-                    
-                    {/* Password */}
-                    {member.password && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-ink-300 font-mono truncate mr-2 flex-1">
-                          {isPasswordVisible ? member.password : '••••••••'}
-                        </span>
-                        <div className="flex gap-1 flex-shrink-0 ml-1">
-                          <button 
-                            onClick={() => togglePasswordVisibility(member.id)} 
-                            className="text-ink-300 hover:text-white cursor-pointer"
-                          >
-                            {isPasswordVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                          </button>
-                          <button 
-                            onClick={() => copyToClipboard(member.password, 'pass', member.id)} 
-                            className="text-ink-300 hover:text-white cursor-pointer"
-                          >
-                            {copiedField === `pass-${member.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -238,10 +190,8 @@ export default function Team({ ctx, toast }) {
         </div>
       )}
 
-      {/* Add/Edit Member Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Member' : 'New Team Member'}>
         <div className="space-y-4">
-          {/* Show Generated Credentials after creation */}
           {generatedCreds && (
             <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 animate-scale-in">
               <h3 className="text-sm font-bold text-emerald-400 mb-2">✅ Member Created Successfully!</h3>
@@ -250,48 +200,30 @@ export default function Team({ ctx, toast }) {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center bg-ink-900/50 p-2 rounded-lg">
                   <span className="text-ink-300 truncate mr-2">{generatedCreds.email}</span>
-                  <button 
-                    onClick={() => copyToClipboard(generatedCreds.email, 'modal-email', 'temp')} 
-                    className="text-emerald-400 cursor-pointer flex-shrink-0"
-                  >
+                  <button onClick={() => copyToClipboard(generatedCreds.email, 'modal-email', 'temp')} className="text-emerald-400 cursor-pointer flex-shrink-0">
                     {copiedField === 'modal-email-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </button>
                 </div>
                 <div className="flex justify-between items-center bg-ink-900/50 p-2 rounded-lg">
                   <span className="text-ink-300 font-mono truncate mr-2">{generatedCreds.password}</span>
-                  <button 
-                    onClick={() => copyToClipboard(generatedCreds.password, 'modal-pass', 'temp')} 
-                    className="text-emerald-400 cursor-pointer flex-shrink-0"
-                  >
+                  <button onClick={() => copyToClipboard(generatedCreds.password, 'modal-pass', 'temp')} className="text-emerald-400 cursor-pointer flex-shrink-0">
                     {copiedField === 'modal-pass-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-ink-400 mt-2">⚠️ These credentials are shown only once. Save them securely!</p>
+              <p className="text-[10px] text-ink-400 mt-2">⚠️ Save these credentials securely!</p>
             </div>
           )}
 
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Full Name</label>
-            <input 
-              type="text" 
-              value={form.name} 
-              onChange={(e) => setForm({ ...form, name: e.target.value })} 
-              className={`input ${errors.name ? 'border-rose-500/60' : ''}`} 
-              placeholder="John Doe" 
-            />
+            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={`input ${errors.name ? 'border-rose-500/60' : ''}`} placeholder="John Doe" />
             {errors.name && <div className="text-xs text-rose-400 mt-1">{errors.name}</div>}
           </div>
           
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Role</label>
-            <input 
-              type="text" 
-              value={form.role} 
-              onChange={(e) => setForm({ ...form, role: e.target.value })} 
-              className={`input ${errors.role ? 'border-rose-500/60' : ''}`} 
-              placeholder="UI/UX Designer" 
-            />
+            <input type="text" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={`input ${errors.role ? 'border-rose-500/60' : ''}`} placeholder="UI/UX Designer" />
             {errors.role && <div className="text-xs text-rose-400 mt-1">{errors.role}</div>}
           </div>
           
@@ -299,30 +231,17 @@ export default function Team({ ctx, toast }) {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Avatar Color</label>
             <div className="flex flex-wrap gap-2">
               {AVATAR_GRADIENTS.map((g) => (
-                <button 
-                  key={g} 
-                  type="button" 
-                  onClick={() => setForm({ ...form, avatarColor: g })} 
-                  className={`h-9 w-9 rounded-xl bg-gradient-to-br ${g} transition-all cursor-pointer ${form.avatarColor === g ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`} 
-                />
+                <button key={g} type="button" onClick={() => setForm({ ...form, avatarColor: g })} className={`h-9 w-9 rounded-xl bg-gradient-to-br ${g} transition-all cursor-pointer ${form.avatarColor === g ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`} />
               ))}
             </div>
           </div>
           
           <div className="flex gap-2 pt-2">
-            <button 
-              onClick={() => setModalOpen(false)} 
-              className="btn-ghost flex-1 border border-ink-600"
-              disabled={loading}
-            >
+            <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600" disabled={loading}>
               {generatedCreds ? 'Close' : 'Cancel'}
             </button>
             {!generatedCreds && (
-              <button 
-                onClick={handleSave} 
-                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01] disabled:opacity-50"
-                disabled={loading}
-              >
+              <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01] disabled:opacity-50" disabled={loading}>
                 {loading ? 'Creating...' : (editing ? 'Save Changes' : 'Add Member')}
               </button>
             )}

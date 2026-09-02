@@ -14,7 +14,7 @@ import Earnings from './pages/Earnings';
 import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const ctx = useCashTrack(user);
   
   const [page, setPage] = useState('dashboard');
@@ -22,7 +22,6 @@ function AppContent() {
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [newTxTrigger, setNewTxTrigger] = useState(0);
 
-  // ✅ ALL hooks must be called BEFORE any conditional returns
   const toast = useCallback((message, type = 'success') => {
     const id = `toast_${Date.now()}_${Math.random()}`;
     setToasts((t) => [...t, { id, message, type }]);
@@ -42,11 +41,11 @@ function AppContent() {
     setPage('clients');
   };
 
-  // ✅ Now we can do conditional rendering AFTER all hooks
-  if (loading) {
+  // Show loading while auth or data is loading
+  if (authLoading || ctx.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-950">
-        <div className="text-ink-400">Loading...</div>
+        <div className="text-ink-400 text-xl">Loading CashTrack...</div>
       </div>
     );
   }
