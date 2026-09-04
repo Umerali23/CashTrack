@@ -1,163 +1,335 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, Pencil, Trash2, CheckCircle2, Clock, AlertCircle, Calendar, DollarSign } from 'lucide-react';
+import { Plus, CheckCircle, Clock, AlertCircle, Calendar, User, Briefcase } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
-import { formatCurrency } from '../lib/currency';
 
 const STATUS_CONFIG = {
   'pending': { label: 'Pending', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', icon: Clock },
   'in-progress': { label: 'In Progress', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20', icon: AlertCircle },
-  'completed': { label: 'Completed', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle2 },
+  'completed': { label: 'Completed', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle },
 };
 
-const EMPTY_FORM = { title: '', description: '', clientId: '', assigneeId: '', status: 'pending', compensation: '', currency: 'USD', dueDate: new Date().toISOString().slice(0, 10) };
+export default function Tasks({ ctx, toast }) {
+  const { user } = useAuth();
+  
+  // ✅ Safely extract data with fallbacks
+  const tasks = ctx.data?.tasks || [];
+  const clients = ctx.data?.clients || [];
+  const profiles = ctx.data?.profiles || [];
+  const { addTask, updateTask } = ctx;
 
-export default function Tasks({ ctx, toast, user }) {
-  const { data, toDisplay, addTask, updateTask, deleteTask, tasks } = ctx;
-  const clients = data?.clients || [];
-  const team = data?.team || [];
+  // Debug logging (remove this in production)
+  console.log('Tasks Page - Data:', { tasksCount: tasks.length, clientsCount: clients.length, membersCount: profiles.length });
 
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingTask, setEditingTask] = useState(null);
+  const [form, setForm] = useState({ 
+    title: '', 
+    description: '', 
+    clientId: '', 
+    assigneeId: '', 
+    compensation: '', 
+    dueDate: '', 
+    status: 'pending',
+    currency: 'USD'
+  });
 
+  // Filter tasks based on Role
   const visibleTasks = useMemo(() => {
-    return tasks
-      .filter(t => filterStatus === 'all' || t.status === filterStatus)
-      .filter(t => search.trim() === '' || t.title.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [tasks, filterStatus, search]);
+    if (user?.role === 'admin') return tasks;
+    // Members only see tasks assigned to them
+    return tasks.filter(t => t.assigneeId === user.id);
+  }, [tasks, user]);
+
+  // Get only team members (not admins) for assignment
+  const teamMembers = useMemo(() => {
+    return profiles.filter(p => p.role === 'member');
+  }, [profiles]);
 
   const openNew = () => {
-    setEditing(null);
-    setForm({ ...EMPTY_FORM, assigneeId: user?.role === 'member' ? user.id : '' });
+    setEditingTask(null);
+    setForm({ 
+      title: '', 
+      description: '', 
+      clientId: '', 
+      assigneeId: '', 
+      compensation: '', 
+      dueDate: '', 
+      status: 'pending',
+      currency: 'USD'
+    });
     setModalOpen(true);
   };
 
-  const openEdit = (t) => {
-    setEditing(t);
-    setForm({ title: t.title, description: t.description, clientId: t.clientId || '', assigneeId: t.assigneeId || '', status: t.status, compensation: t.compensation || '', currency: t.currency || 'USD', dueDate: t.dueDate });
+  const openEdit = (task) => {
+    setEditingTask(task);
+    setForm({
+      title: task.title,
+      description: task.description || '',
+      clientId: task.clientId || '',
+      assigneeId: task.assigneeId || '',
+      compensation: task.compensation || '',
+      dueDate: task.dueDate || '',
+      status: task.status || 'pending',
+      currency: task.currency || 'USD'
+    });
     setModalOpen(true);
   };
 
-  const handleSave = () => {
-    if (!form.title.trim()) return toast('Title is required', 'error');
-    let finalAssigneeId = form.assigneeId;
-    if (user?.role === 'member') finalAssigneeId = editing ? editing.assigneeId : user.id; 
-
-    const payload = { 
-      ...form, 
-      clientId: form.clientId || null, 
-      assigneeId: finalAssigneeId || null,
-      compensation: Number(form.compensation) || 0
-    };
+  const handleSave = async () => {
+    if (!form.title.trim()) {
+      return toast('Task title is required', 'error');
+    }
+    if (!form.clientId) {
+      return toast('Please select a client', 'error');
+    }
+    if (!form.assigneeId) {
+      return toast('Please assign to a team member', 'error');
+    }
     
-    if (editing) { updateTask(editing.id, payload); toast('Task updated', 'success'); } 
-    else { addTask(payload); toast('Task created', 'success'); }
-    setModalOpen(false);
+    try {
+      if (editingTask) {
+        await updateTask(editingTask.id, form);
+        toast('Task updated successfully', 'success');
+      } else {
+        await addTask(form);
+        toast('Task created and assigned', 'success');
+      }
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Error saving task:', error);
+      toast('Failed to save task', 'error');
+    }
   };
 
-  const handleDelete = (t) => { if (!window.confirm(`Delete task "${t.title}"?`)) return; deleteTask(t.id); toast('Task deleted', 'info'); };
-  const handleStatusChange = (taskId, newStatus) => { updateTask(taskId, { status: newStatus }); toast(`Task marked as ${STATUS_CONFIG[newStatus].label}`, 'success'); };
-
-  const stats = useMemo(() => ({
-    total: visibleTasks.length, completed: visibleTasks.filter(t => t.status === 'completed').length,
-    inProgress: visibleTasks.filter(t => t.status === 'in-progress').length, pending: visibleTasks.filter(t => t.status === 'pending').length,
-  }), [visibleTasks]);
+  const handleStatusChange = async (task, newStatus) => {
+    try {
+      await updateTask(task.id, { ...task, status: newStatus });
+      toast(`Task marked as ${newStatus}`, 'success');
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast('Failed to update task status', 'error');
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div><h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Tasks & Projects</h1><p className="text-ink-400 text-sm mt-1">{user?.role === 'admin' ? 'Manage team workload' : 'Your assigned tasks'}</p></div>
-        <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10"><Plus className="h-4 w-4" strokeWidth={2.5} /> New Task</button>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Total</div><div className="text-xl font-bold mt-1">{stats.total}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Completed</div><div className="text-xl font-bold text-emerald-400 mt-1">{stats.completed}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">In Progress</div><div className="text-xl font-bold text-blue-400 mt-1">{stats.inProgress}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Pending</div><div className="text-xl font-bold text-amber-400 mt-1">{stats.pending}</div></div>
-      </div>
-
-      <div className="glass rounded-2xl p-4 flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" /><input type="text" placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-10" /></div>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="input w-auto"><option value="all">All Status</option><option value="pending">Pending</option><option value="in-progress">In Progress</option><option value="completed">Completed</option></select>
-      </div>
-
-      <div className="glass rounded-2xl overflow-hidden">
-        {visibleTasks.length === 0 ? (
-          <EmptyState title="No tasks found" description="Create a new task to get started." action={<button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Task</button>} />
-        ) : (
-          <div className="divide-y divide-ink-600/40">
-            {visibleTasks.map((t) => {
-              const client = clients.find(c => c.id === t.clientId);
-              const assignee = team.find(m => m.id === t.assigneeId);
-              const isOverdue = t.status !== 'completed' && new Date(t.dueDate) < new Date();
-              return (
-                <div key={t.id} className="p-5 hover:bg-ink-700/20 transition-colors group">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-base truncate">{t.title}</h3>
-                        {isOverdue && <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">Overdue</span>}
-                      </div>
-                      <p className="text-sm text-ink-400 line-clamp-2 mb-3">{t.description || 'No description provided.'}</p>
-                      <div className="flex flex-wrap items-center gap-3 text-xs">
-                        {client && <span className="flex items-center gap-1.5 text-ink-300"><span className="h-1.5 w-1.5 rounded-full bg-ink-500" />{client.name}</span>}
-                        {assignee && (<span className="flex items-center gap-1.5 text-ink-300"><span className={`h-4 w-4 rounded-full bg-gradient-to-br ${assignee.avatarColor} flex items-center justify-center text-[8px] text-white font-bold`}>{assignee.name[0]}</span>{assignee.name}</span>)}
-                        <span className="flex items-center gap-1.5 text-ink-500"><Calendar className="h-3 w-3" /> {new Date(t.dueDate).toLocaleDateString()}</span>
-                        {/* ✅ Display Compensation */}
-                        {t.compensation > 0 && (
-                          <span className="flex items-center gap-1.5 font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                            <DollarSign className="h-3 w-3" /> {formatCurrency(t.compensation, t.currency || 'USD')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <select value={t.status} onChange={(e) => handleStatusChange(t.id, e.target.value)} className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border outline-none cursor-pointer ${STATUS_CONFIG[t.status].color}`}>
-                        <option value="pending">Pending</option><option value="in-progress">In Progress</option><option value="completed">Completed</option>
-                      </select>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(t)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
-                        <button onClick={() => handleDelete(t)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-ink-400 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            {user?.role === 'admin' ? 'All Tasks' : 'My Tasks'}
+          </h1>
+          <p className="text-ink-400 text-sm mt-1">
+            {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
+        {user?.role === 'admin' && (
+          <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
+            <Plus className="h-4 w-4" strokeWidth={2.5} /> New Task
+          </button>
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Task' : 'New Task'}>
-        <div className="space-y-4">
-          <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Title</label><input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input" placeholder="Login Page" /></div>
-          <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input min-h-[80px]" placeholder="Brief details..." /></div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client</label><select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input"><option value="">— None —</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-            {user?.role === 'admin' && (<div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assignee</label><select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="input"><option value="">— Unassigned —</option>{team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>)}
-          </div>
+      {/* Task Grid */}
+      {visibleTasks.length === 0 ? (
+        <EmptyState 
+          title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"} 
+          description={user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now. Check back later!"} 
+          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Task</button> : null} 
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleTasks.map((task) => {
+            const StatusIcon = STATUS_CONFIG[task.status]?.icon || Clock;
+            const client = clients.find(c => c.id === task.clientId);
+            const assignee = profiles.find(p => p.id === task.assigneeId);
 
-          {/* ✅ Compensation Fields (Admin Only) */}
-          {user?.role === 'admin' && (
-            <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-ink-900/40 border border-ink-600/40">
-              <div><label className="text-xs font-semibold text-emerald-400 mb-1.5 block">Compensation Amount</label><input type="number" value={form.compensation} onChange={(e) => setForm({ ...form, compensation: e.target.value })} className="input" placeholder="25" /></div>
-              <div><label className="text-xs font-semibold text-emerald-400 mb-1.5 block">Currency</label><select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="input"><option value="USD">USD ($)</option><option value="PKR">PKR (Rs)</option></select></div>
-            </div>
-          )}
+            return (
+              <div key={task.id} className="glass rounded-2xl p-5 hover:border-ink-500 transition-all duration-300 flex flex-col h-full">
+                {/* Top Row: Status & Actions */}
+                <div className="flex justify-between items-start mb-4">
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_CONFIG[task.status]?.color}`}>
+                    <StatusIcon className="h-3 w-3" />
+                    {STATUS_CONFIG[task.status]?.label}
+                  </span>
+                  
+                  <div className="flex gap-2">
+                    {user?.role === 'admin' && (
+                      <button 
+                        onClick={() => openEdit(task)} 
+                        className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white cursor-pointer transition-colors"
+                        title="Edit task"
+                      >
+                        <Briefcase className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {user?.role !== 'admin' && task.status !== 'completed' && (
+                      <button 
+                        onClick={() => handleStatusChange(task, 'completed')}
+                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded-md cursor-pointer transition-colors"
+                      >
+                        Mark Done
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input"><option value="pending">Pending</option><option value="in-progress">In Progress</option><option value="completed">Completed</option></select></div>
-            <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input" /></div>
-          </div>
-          <div className="flex gap-2 pt-2"><button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button><button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01]">{editing ? 'Save Changes' : 'Create Task'}</button></div>
+                {/* Content */}
+                <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={task.title}>
+                  {task.title}
+                </h3>
+                <p className="text-xs text-ink-400 mb-4 line-clamp-2 flex-grow">
+                  {task.description || 'No description provided.'}
+                </p>
+
+                {/* Meta Data */}
+                <div className="space-y-2 pt-4 border-t border-ink-600/50 text-xs">
+                  {client && (
+                    <div className="flex items-center gap-2 text-ink-300">
+                      <Briefcase className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
+                      <span className="truncate" title={client.name}>{client.name}</span>
+                    </div>
+                  )}
+                  {assignee && (
+                    <div className="flex items-center gap-2 text-ink-300">
+                      <User className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
+                      <span>{assignee.name}</span>
+                    </div>
+                  )}
+                  {task.dueDate && (
+                    <div className="flex items-center gap-2 text-ink-300">
+                      <Calendar className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
+                      <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold pt-1">
+                    ${task.compensation} {task.currency}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </Modal>
+      )}
+
+      {/* Create/Edit Modal (Admin Only) */}
+      {user?.role === 'admin' && (
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
+          <div className="space-y-4">
+            {/* Task Title */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
+              <input 
+                type="text" 
+                value={form.title} 
+                onChange={(e) => setForm({...form, title: e.target.value})} 
+                className="input" 
+                placeholder="e.g. Design Homepage" 
+              />
+            </div>
+            
+            {/* Description */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
+              <textarea 
+                value={form.description} 
+                onChange={(e) => setForm({...form, description: e.target.value})} 
+                className="input h-20 resize-none" 
+                placeholder="Task details, requirements, etc..." 
+              />
+            </div>
+
+            {/* Client and Assignee Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Client Selection */}
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
+                {clients.length === 0 && (
+                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                    ⚠️ No clients found. <a href="/clients" className="underline hover:text-amber-300">Add a client first</a>
+                  </div>
+                )}
+                <select 
+                  value={form.clientId} 
+                  onChange={(e) => setForm({...form, clientId: e.target.value})} 
+                  className="input"
+                  disabled={clients.length === 0}
+                >
+                  <option value="">Select Client</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Team Member Selection */}
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
+                {teamMembers.length === 0 && (
+                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                    ⚠️ No team members. <a href="/team" className="underline hover:text-amber-300">Add a member</a>
+                  </div>
+                )}
+                <select 
+                  value={form.assigneeId} 
+                  onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
+                  className="input"
+                  disabled={teamMembers.length === 0}
+                >
+                  <option value="">Select Member</option>
+                  {teamMembers.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Compensation and Due Date */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Compensation</label>
+                <input 
+                  type="number" 
+                  value={form.compensation} 
+                  onChange={(e) => setForm({...form, compensation: e.target.value})} 
+                  className="input" 
+                  placeholder="0.00" 
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
+                <input 
+                  type="date" 
+                  value={form.dueDate} 
+                  onChange={(e) => setForm({...form, dueDate: e.target.value})} 
+                  className="input" 
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={() => setModalOpen(false)} 
+                className="btn-ghost flex-1 border border-ink-600 hover:bg-ink-800/50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!form.title || !form.clientId || !form.assigneeId}
+              >
+                {editingTask ? 'Save Changes' : 'Create Task'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

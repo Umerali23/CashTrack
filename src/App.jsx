@@ -41,7 +41,6 @@ function AppContent() {
     setPage('clients');
   };
 
-  // Show loading while auth or data is loading
   if (authLoading || ctx.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-950">

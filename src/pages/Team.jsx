@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
@@ -80,12 +79,10 @@ export default function Team({ ctx, toast }) {
 
     try {
       if (editing) {
-        // Update existing member
         await updateTeamMember(editing.id, form);
         toast('Team member updated', 'success');
         setModalOpen(false);
       } else {
-        // Create new member
         const creds = generateCredentials(form.name);
         
         const result = await addTeamMember({
@@ -99,12 +96,6 @@ export default function Team({ ctx, toast }) {
         if (result.success) {
           toast('Team member created successfully!', 'success');
           setGeneratedCreds(creds);
-          
-          // Refresh team list
-          const { data: updatedProfiles } = await supabase.from('profiles').select('*');
-          if (updatedProfiles) {
-            ctx.setData(prev => ({ ...prev, profiles: updatedProfiles }));
-          }
         } else {
           throw new Error(result.error || 'Failed to create member');
         }
@@ -155,7 +146,7 @@ export default function Team({ ctx, toast }) {
             return (
               <div key={member.id} className="glass rounded-2xl p-5 group hover:border-ink-500 transition-all duration-300">
                 <div className="flex items-start justify-between mb-4">
-                  <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${member.avatar_color || member.avatarColor} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                  <div className={`h-14 w-14 rounded-2xl bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
                     {initials}
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
