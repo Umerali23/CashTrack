@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { DollarSign, Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle } from 'lucide-react';
 
 export default function Login() {
   const { login } = useAuth();
@@ -9,55 +9,55 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    setLoading(true);
+
+    const result = await login(email, password);
     
-    // Simulate a brief network delay for a premium feel
-    setTimeout(() => {
-      const result = login(email, password);
-      if (!result.success) {
-        setError(result.error);
-      }
-      setLoading(false);
-    }, 600);
+    if (!result.success) {
+      setError(result.error || 'Invalid credentials');
+    }
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-ink-950 relative overflow-hidden">
-      {/* Ambient Background */}
-      <div className="absolute top-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-emerald-500/10 blur-[100px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] h-[600px] w-[600px] rounded-full bg-violet-500/10 blur-[100px]" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-ink-950">
+      {/* Background Blobs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="blob bg-emerald-500/20 top-[-10%] left-[-10%] h-[500px] w-[500px]" />
+        <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
+      </div>
 
-      <div className="relative w-full max-w-md p-8 glass rounded-3xl border border-ink-600/50 shadow-2xl animate-scale-in">
+      <div className="glass w-full max-w-md p-8 rounded-3xl relative z-10 animate-scale-in">
         <div className="text-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
-            <DollarSign className="h-7 w-7 text-white" strokeWidth={2.5} />
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+            <span className="text-2xl font-bold text-white">$</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Welcome to CashTrack</h1>
-          <p className="text-ink-400 text-sm mt-1">Sign in to manage your team and projects</p>
+          <h1 className="text-2xl font-bold tracking-tight">Welcome to CashTrack</h1>
+          <p className="text-ink-400 text-sm mt-1">Sign in to your dashboard</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
+        {error && (
+          <div className="mb-6 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center gap-2 text-sm text-rose-400">
+            <AlertCircle className="h-4 w-4" /> {error}
+          </div>
+        )}
 
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input pl-10"
-                placeholder="name@company.com"
+              {/* ✅ FIXED: White background, dark text */}
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
                 required
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all"
+                placeholder="admin@cashtrack.com"
               />
             </div>
           </div>
@@ -66,25 +66,32 @@ export default function Login() {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input pl-10"
-                placeholder="••••••••"
+              {/* ✅ FIXED: White background, dark text */}
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
                 required
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all"
+                placeholder="••••••••"
               />
             </div>
           </div>
 
-          <button
-            type="submit"
+          <button 
+            type="submit" 
             disabled={loading}
-            className="w-full btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+            className="w-full py-3 rounded-xl bg-white text-ink-950 font-bold hover:bg-ink-100 transition-colors disabled:opacity-50 mt-2"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <div className="mt-6 p-4 rounded-xl bg-ink-900/50 border border-ink-700/50 text-xs text-ink-400">
+          <div className="font-semibold text-ink-300 mb-1">Demo Credentials:</div>
+          <div>Admin: admin@cashtrack.com / admin123</div>
+          <div>Member: umer@cashtrack.com / umer123</div>
+        </div>
       </div>
     </div>
   );
