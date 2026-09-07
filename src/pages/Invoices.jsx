@@ -1,262 +1,437 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, FileText, Printer, Trash2, CheckCircle2, Clock, Send, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, Eye, Trash2, CheckCircle, Clock, AlertCircle, FileText } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
 
 const STATUS_CONFIG = {
-  'draft': { label: 'Draft', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20', icon: FileText },
-  'sent': { label: 'Sent', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20', icon: Send },
-  'paid': { label: 'Paid', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle2 },
-  'overdue': { label: 'Overdue', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20', icon: Clock },
+  'draft': { label: 'Draft', color: 'bg-ink-500/10 text-ink-400 border-ink-500/20' },
+  'sent': { label: 'Sent', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  'paid': { label: 'Paid', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
 };
 
-const EMPTY_FORM = { 
-  invoiceNumber: '', clientId: '', items: [{ description: '', amount: '' }], 
-  status: 'draft', dueDate: new Date().toISOString().slice(0, 10), currency: 'USD' 
-};
+export default function Invoices({ ctx, toast }) {
+  const { user } = useAuth();
+  const { data, addInvoice, markInvoiceAsPaid, generateInvoiceFromTasks } = ctx;
+  const currency = ctx.displayCurrency === 'ORIGINAL' ? 'USD' : ctx.displayCurrency;
 
-export default function Invoices({ ctx, toast, user }) {
-  // ✅ Destructure the new automated functions
-  const { data: appData, toDisplay, addInvoice, updateInvoice, deleteInvoice, invoices, markInvoiceAsPaid, revertInvoiceStatus } = ctx;
-  const clients = appData?.clients || [];
-  const transactions = appData?.transactions || [];
+  const invoices = data?.invoices || [];
+  const clients = data?.clients || [];
+  const tasks = data?.tasks || [];
 
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
-  const [autoGenerateOpen, setAutoGenerateOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState('');
-  const [previewInv, setPreviewInv] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-
-  const isAdmin = user?.role === 'admin';
-
-  // ✅ FIXED: Use appData.tasks instead of data.tasks
-  const uninvoicedWork = useMemo(() => {
-    // 1. Find all Task IDs that are already inside an invoice
-    const invoicedTaskIds = new Set();
-    invoices.forEach(inv => {
-      inv.items?.forEach(item => { if (item.taskId) invoicedTaskIds.add(item.taskId); });
-    });
-
-    // 2. Filter tasks that are completed and not yet invoiced
-    const billableTasks = (appData.tasks || []).filter(t => 
-      t.status === 'completed' && !invoicedTaskIds.has(t.id) && t.compensation > 0
-    );
-
-    // 3. Group them by Client
-    const clientWork = {};
-    billableTasks.forEach(task => {
-      if (!task.clientId) return;
-      if (!clientWork[task.clientId]) {
-        clientWork[task.clientId] = { items: [], total: 0, currency: task.currency || 'USD' };
-      }
-      clientWork[task.clientId].items.push({
-        description: task.title,
-        amount: task.compensation,
-        taskId: task.id, // Link invoice item to task
-        date: task.dueDate
-      });
-      clientWork[task.clientId].total += task.compensation;
-      clientWork[task.clientId].currency = task.currency || 'USD';
-    });
-
-    return Object.entries(clientWork).map(([clientId, cData]) => ({
-      clientId, client: clients.find(c => c.id === clientId),
-      items: cData.items, total: cData.total, currency: cData.currency
-    })).filter(cw => cw.client);
-  }, [appData.tasks, invoices, clients]);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [form, setForm] = useState({
+    clientId: '',
+    items: [{ description: '', quantity: 1, rate: 0 }],
+    issueDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    status: 'draft'
+  });
 
   const visibleInvoices = useMemo(() => {
-    return invoices
-      .filter(inv => filterStatus === 'all' || inv.status === filterStatus)
-      .filter(inv => search.trim() === '' || inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => new Date(b.issueDate) - new Date(a.issueDate));
-  }, [invoices, filterStatus, search]);
+    if (user?.role === 'admin') return invoices;
+    const memberTaskClientIds = tasks
+      .filter(t => t.assigneeId === user.id)
+      .map(t => t.clientId);
+    return invoices.filter(inv => memberTaskClientIds.includes(inv.clientId));
+  }, [invoices, tasks, user]);
+
+  const totalAmount = useMemo(() => {
+    return visibleInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+  }, [visibleInvoices]);
+
+  // Get completed tasks for a specific client (for invoice generation)
+  const completedTasksForClient = useMemo(() => {
+    if (!selectedClientId) return [];
+    return tasks.filter(t => 
+      t.clientId === selectedClientId && 
+      t.status === 'completed' &&
+      !invoices.some(inv => inv.linkedTaskIds?.includes(t.id))
+    );
+  }, [selectedClientId, tasks, invoices]);
 
   const openNew = () => {
-    setEditing(null);
-    setForm({ ...EMPTY_FORM, invoiceNumber: `INV-${String(invoices.length + 1).padStart(3, '0')}` });
-    setModalOpen(true);
-  };
-
-  const openEdit = (inv) => {
-    setEditing(inv);
-    setForm({ invoiceNumber: inv.invoiceNumber, clientId: inv.clientId || '', items: inv.items, status: inv.status, dueDate: inv.dueDate, currency: inv.currency });
-    setModalOpen(true);
-  };
-
-  const handleAutoGenerate = () => {
-    if (!selectedClient) return toast('Please select a client', 'error');
-    const work = uninvoicedWork.find(w => w.clientId === selectedClient);
-    if (!work || work.items.length === 0) return toast('No uninvoiced work found', 'error');
-
-    addInvoice({
-      invoiceNumber: `INV-${String(invoices.length + 1).padStart(3, '0')}`,
-      clientId: selectedClient, createdBy: user?.id || 'admin',
-      // ✅ FIXED: Map taskId instead of txId
-      items: work.items.map(item => ({ description: item.description, amount: item.amount, taskId: item.taskId })),
-      status: 'draft', dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      currency: work.currency, total: work.total
+    setForm({
+      clientId: '',
+      items: [{ description: '', quantity: 1, rate: 0 }],
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: '',
+      status: 'draft'
     });
-    toast(`Invoice generated for ${work.client.name}`, 'success');
-    setAutoGenerateOpen(false); 
-    setSelectedClient('');
+    setModalOpen(true);
+  };
+
+  const calculateTotal = () => {
+    return form.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.rate || 0)), 0);
+  };
+
+  const handleAddItem = () => {
+    setForm({ ...form, items: [...form.items, { description: '', quantity: 1, rate: 0 }] });
+  };
+
+  const handleRemoveItem = (index) => {
+    setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
   };
 
   const handleItemChange = (index, field, value) => {
-    const newItems = [...form.items]; newItems[index] = { ...newItems[index], [field]: value };
+    const newItems = [...form.items];
+    newItems[index][field] = field === 'description' ? value : parseFloat(value) || 0;
     setForm({ ...form, items: newItems });
   };
-  const addItemRow = () => setForm({ ...form, items: [...form.items, { description: '', amount: '' }] });
-  const removeItemRow = (index) => setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
-  const calculateTotal = (items) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-  const handleSave = () => {
-    if (!form.invoiceNumber.trim()) return toast('Invoice number required', 'error');
-    const validItems = form.items.filter(i => i.description.trim() && Number(i.amount) > 0);
-    if (validItems.length === 0) return toast('Add at least one item', 'error');
-    const payload = { ...form, clientId: form.clientId || null, createdBy: editing?.createdBy || user?.id || 'admin', items: validItems, total: calculateTotal(validItems) };
-    if (editing) { updateInvoice(editing.id, payload); toast('Invoice updated', 'success'); } 
-    else { addInvoice(payload); toast('Invoice created', 'success'); }
+  const handleSave = async () => {
+    if (!form.clientId) return toast('Please select a client', 'error');
+
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const total = calculateTotal();
+
+    await addInvoice({
+      invoiceNumber, clientId: form.clientId, createdBy: user.id,
+      status: form.status, total, currency: 'USD', items: form.items,
+      issueDate: form.issueDate, dueDate: form.dueDate
+    });
+
+    toast('Invoice created successfully', 'success');
     setModalOpen(false);
   };
 
-  const handleDelete = (inv) => {
-    if (!window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) return;
-    deleteInvoice(inv.id); toast('Invoice deleted', 'info');
+  const handleGenerateFromTasks = () => {
+    if (!selectedClientId) return toast('Please select a client', 'error');
+    if (selectedTaskIds.length === 0) return toast('Please select at least one task', 'error');
+
+    const invoice = generateInvoiceFromTasks(selectedTaskIds, selectedClientId);
+    if (invoice) {
+      toast(`Invoice ${invoice.invoiceNumber} created from ${selectedTaskIds.length} tasks`, 'success');
+      setGenerateModalOpen(false);
+      setSelectedTaskIds([]);
+      setSelectedClientId('');
+    }
   };
 
-  const handlePrint = () => { setPreviewInv(null); setTimeout(() => window.print(), 100); };
+  const toggleTaskSelection = (taskId) => {
+    setSelectedTaskIds(prev => 
+      prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]
+    );
+  };
 
-  const stats = useMemo(() => ({
-    total: visibleInvoices.length, paid: visibleInvoices.filter(i => i.status === 'paid').length,
-    sent: visibleInvoices.filter(i => i.status === 'sent').length, draft: visibleInvoices.filter(i => i.status === 'draft').length,
-  }), [visibleInvoices]);
+  const handleMarkAsPaid = async (id) => {
+    await markInvoiceAsPaid(id);
+    toast('Invoice marked as paid', 'success');
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this invoice?')) return;
+    ctx.deleteInvoice?.(id);
+    toast('Invoice deleted', 'info');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-ink-400 text-sm mt-1">{isAdmin ? 'Manage all team invoices' : 'Your invoices and billing'}</p>
+          <p className="text-ink-400 text-sm mt-1">
+            {visibleInvoices.length} invoices • {formatCurrency(totalAmount, currency, true)} total
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setAutoGenerateOpen(true)} className="btn-ghost border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"><Sparkles className="h-4 w-4" /> Auto-Generate</button>
-          <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10"><Plus className="h-4 w-4" strokeWidth={2.5} /> New Invoice</button>
-        </div>
-      </div>
-
-      {uninvoicedWork.length > 0 && (
-        <div className="glass rounded-2xl p-4 border border-emerald-500/20 bg-emerald-500/5">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-emerald-400 mb-1">You have uninvoiced work!</h3>
-              <p className="text-xs text-ink-300 mb-3">{uninvoicedWork.reduce((sum, w) => sum + w.items.length, 0)} completed tasks across {uninvoicedWork.length} clients haven't been invoiced yet.</p>
-              <button onClick={() => setAutoGenerateOpen(true)} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer">Generate Invoices Now →</button>
-            </div>
+        {user?.role === 'admin' && (
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setGenerateModalOpen(true)}
+              className="btn-primary bg-emerald-500 text-white hover:bg-emerald-600"
+            >
+              <FileText className="h-4 w-4" strokeWidth={2.5} /> Generate from Tasks
+            </button>
+            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
+              <Plus className="h-4 w-4" strokeWidth={2.5} /> Create Invoice
+            </button>
           </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Total</div><div className="text-xl font-bold mt-1">{stats.total}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Paid</div><div className="text-xl font-bold text-emerald-400 mt-1">{stats.paid}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Sent</div><div className="text-xl font-bold text-blue-400 mt-1">{stats.sent}</div></div>
-        <div className="glass rounded-xl p-4"><div className="text-[10px] uppercase tracking-wider text-ink-400">Drafts</div><div className="text-xl font-bold text-zinc-400 mt-1">{stats.draft}</div></div>
+        )}
       </div>
 
-      <div className="glass rounded-2xl p-4 flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" /><input type="text" placeholder="Search invoice number..." value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-10" /></div>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="input w-auto"><option value="all">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option></select>
-      </div>
-
-      <div className="glass rounded-2xl overflow-hidden">
-        {visibleInvoices.length === 0 ? (
-          <EmptyState title="No invoices found" description="Create your first invoice or use auto-generate." action={<div className="flex gap-2"><button onClick={() => setAutoGenerateOpen(true)} className="btn-ghost border border-emerald-500/40 text-emerald-400"><Sparkles className="h-4 w-4" /> Auto-Generate</button><button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Invoice</button></div>} />
-        ) : (
+      {visibleInvoices.length === 0 ? (
+        <EmptyState 
+          title="No invoices yet" 
+          description="Create your first invoice to get started." 
+          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> Create Invoice</button> : null} 
+        />
+      ) : (
+        <div className="glass rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs uppercase tracking-wider text-ink-400 border-b border-ink-600/60"><th className="px-5 py-3 font-semibold">Invoice #</th><th className="px-5 py-3 font-semibold">Client</th><th className="px-5 py-3 font-semibold">Issue Date</th><th className="px-5 py-3 font-semibold">Due Date</th><th className="px-5 py-3 font-semibold text-right">Amount</th><th className="px-5 py-3 font-semibold">Status</th>{isAdmin && <th className="px-5 py-3 font-semibold text-right">Actions</th>}</tr></thead>
-              <tbody>
-                {visibleInvoices.map((inv) => {
-                  const client = clients.find(c => c.id === inv.clientId);
-                  const StatusIcon = STATUS_CONFIG[inv.status]?.icon || FileText;
+            <table className="w-full">
+              <thead className="bg-ink-900/50 border-b border-ink-600/50">
+                <tr>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Invoice</th>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Client</th>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Issue Date</th>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Due Date</th>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Amount</th>
+                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Status</th>
+                  <th className="text-right text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-600/50">
+                {visibleInvoices.map((invoice) => {
+                  const client = clients.find(c => c.id === invoice.clientId);
+                  const StatusIcon = invoice.status === 'paid' ? CheckCircle : invoice.status === 'sent' ? AlertCircle : Clock;
+                  
                   return (
-                    <tr key={inv.id} className="border-b border-ink-600/40 last:border-0 hover:bg-ink-700/20 transition-colors">
-                      <td className="px-5 py-3.5 font-semibold text-ink-100">{inv.invoiceNumber}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{client?.name || <span className="text-ink-500">—</span>}</td>
-                      <td className="px-5 py-3.5 text-ink-300 tabular-nums">{new Date(inv.issueDate).toLocaleDateString()}</td>
-                      <td className="px-5 py-3.5 text-ink-300 tabular-nums">{new Date(inv.dueDate).toLocaleDateString()}</td>
-                      <td className="px-5 py-3.5 text-right font-bold tabular-nums">{formatCurrency(inv.total, inv.currency)}</td>
-                      <td className="px-5 py-3.5">
-                        {isAdmin ? (
-                          <select 
-                            value={inv.status} 
-                            onChange={(e) => {
-                              const newStatus = e.target.value;
-                              // ✅ AUTOMATED PIPELINE LOGIC
-                              if (newStatus === 'paid' && inv.status !== 'paid') {
-                                markInvoiceAsPaid(inv.id);
-                                toast(`Invoice paid! Income transaction auto-created.`, 'success');
-                              } else if (newStatus !== 'paid' && inv.status === 'paid') {
-                                revertInvoiceStatus(inv.id, newStatus);
-                                toast(`Status reverted. Auto-income removed.`, 'info');
-                              } else {
-                                updateInvoice(inv.id, { status: newStatus });
-                                toast(`Status updated to ${STATUS_CONFIG[newStatus]?.label}`, 'success');
-                              }
-                            }}
-                            className={`text-xs font-semibold px-2.5 py-1 rounded-lg border outline-none cursor-pointer ${STATUS_CONFIG[inv.status]?.color || STATUS_CONFIG.draft.color}`}
-                          >
-                            <option value="draft">Draft</option>
-                            <option value="sent">Sent</option>
-                            <option value="paid">Paid</option>
-                          </select>
-                        ) : (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${STATUS_CONFIG[inv.status]?.color || STATUS_CONFIG.draft.color}`}>
-                            <StatusIcon className="h-3 w-3" /> {STATUS_CONFIG[inv.status]?.label || 'Draft'}
-                          </span>
-                        )}
+                    <tr key={invoice.id} className="hover:bg-ink-900/30 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-sm">{invoice.invoiceNumber}</div>
                       </td>
-                      {isAdmin && (
-                        <td className="px-5 py-3.5 text-right"><div className="inline-flex gap-1"><button onClick={() => setPreviewInv(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer"><Printer className="h-3.5 w-3.5" /></button><button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-300 hover:text-white cursor-pointer"><FileText className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(inv)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-ink-300 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button></div></td>
-                      )}
+                      <td className="px-6 py-4">
+                        <div className="text-sm">{client?.name || 'Unknown Client'}</div>
+                        <div className="text-xs text-ink-400">{client?.company}</div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-ink-300">
+                        {invoice.issueDate ? new Date(invoice.issueDate).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-ink-300">
+                        {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-bold text-emerald-400">
+                          {formatCurrency(invoice.total || 0, invoice.currency || 'USD', true)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border inline-flex items-center gap-1.5 ${STATUS_CONFIG[invoice.status]?.color}`}>
+                          <StatusIcon className="h-3 w-3" />
+                          {STATUS_CONFIG[invoice.status]?.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => setViewingInvoice(invoice)}
+                            className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white cursor-pointer"
+                            title="View Invoice"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          {user?.role === 'admin' && invoice.status !== 'paid' && (
+                            <button 
+                              onClick={() => handleMarkAsPaid(invoice.id)}
+                              className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400 cursor-pointer"
+                              title="Mark as Paid"
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {user?.role === 'admin' && (
+                            <button 
+                              onClick={() => handleDelete(invoice.id)}
+                              className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400 cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {/* Manual Create/Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Invoice' : 'New Invoice'} size="lg">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Invoice Number</label><input type="text" value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} className="input" placeholder="INV-001" /></div><div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client</label><select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input"><option value="">— Select Client —</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div></div>
-          <div><div className="flex items-center justify-between mb-2"><label className="text-xs font-semibold text-ink-300">Line Items</label><button onClick={addItemRow} className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">+ Add Item</button></div><div className="space-y-2">{form.items.map((item, index) => (<div key={index} className="flex gap-2"><input type="text" value={item.description} onChange={(e) => handleItemChange(index, 'description', e.target.value)} className="input flex-1" placeholder="Description" /><input type="number" value={item.amount} onChange={(e) => handleItemChange(index, 'amount', e.target.value)} className="input w-32" placeholder="Amount" />{form.items.length > 1 && (<button onClick={() => removeItemRow(index)} className="p-2 rounded-lg hover:bg-rose-500/10 text-rose-400 cursor-pointer"><Trash2 className="h-4 w-4" /></button>)}</div>))}</div><div className="text-right mt-2 text-sm font-bold text-ink-100">Total: {formatCurrency(calculateTotal(form.items), form.currency)}</div></div>
-          <div className="grid grid-cols-3 gap-3">{isAdmin && <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input"><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option></select></div>}<div className={isAdmin ? '' : 'col-span-2'}><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input" /></div><div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label><select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="input"><option value="USD">USD ($)</option><option value="PKR">PKR (Rs)</option></select></div></div>
-          <div className="flex gap-2 pt-2"><button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button><button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01]">{editing ? 'Save Changes' : 'Create Invoice'}</button></div>
         </div>
-      </Modal>
+      )}
 
-      {/* Auto-Generate Modal */}
-      <Modal open={autoGenerateOpen} onClose={() => setAutoGenerateOpen(false)} title="Auto-Generate Invoice" size="md">
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20"><div className="flex items-start gap-3"><Sparkles className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" /><div><h3 className="text-sm font-semibold text-emerald-400 mb-1">Smart Invoice Generation</h3><p className="text-xs text-ink-300">Automatically create an invoice from your completed tasks.</p></div></div></div>
-          <div><label className="text-xs font-semibold text-ink-300 mb-1.5 block">Select Client</label><select value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} className="input"><option value="">— Choose a client —</option>{uninvoicedWork.map(w => (<option key={w.clientId} value={w.clientId}>{w.client.name} ({w.items.length} tasks • {formatCurrency(w.total, w.currency)})</option>))}</select></div>
-          {selectedClient && (<div className="p-4 rounded-xl bg-ink-900/50 border border-ink-600/50"><div className="text-xs font-semibold text-ink-400 mb-3">Preview of Invoice Items:</div>{uninvoicedWork.find(w => w.clientId === selectedClient)?.items.map((item, i) => (<div key={i} className="flex justify-between text-sm py-2 border-b border-ink-600/40 last:border-0"><span className="text-ink-300">{item.description}</span><span className="font-semibold tabular-nums">{formatCurrency(item.amount, uninvoicedWork.find(w => w.clientId === selectedClient).currency)}</span></div>))}<div className="flex justify-between mt-3 pt-3 border-t-2 border-ink-600"><span className="font-bold text-ink-100">Total</span><span className="font-bold text-emerald-400 tabular-nums">{formatCurrency(uninvoicedWork.find(w => w.clientId === selectedClient)?.total || 0, uninvoicedWork.find(w => w.clientId === selectedClient)?.currency)}</span></div></div>)}
-          <div className="flex gap-2 pt-2"><button onClick={() => setAutoGenerateOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button><button onClick={handleAutoGenerate} disabled={!selectedClient} className="btn-primary flex-1 bg-emerald-500 text-white hover:bg-emerald-600 hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed">Generate Invoice</button></div>
-        </div>
-      </Modal>
+      {/* Create Invoice Modal */}
+      {user?.role === 'admin' && (
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Invoice" size="lg">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
+              <select value={form.clientId} onChange={(e) => setForm({...form, clientId: e.target.value})} className="input">
+                <option value="">Select Client</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name} - {c.company}</option>)}
+              </select>
+            </div>
 
-      {/* Print Preview Modal */}
-      {previewInv && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in no-print"><div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewInv(null)} /><div className="relative w-full max-w-3xl bg-white text-black rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto"><div className="sticky top-0 bg-white border-b border-zinc-200 p-4 flex justify-between items-center z-10"><h3 className="font-bold text-lg">Invoice Preview</h3><div className="flex gap-2"><button onClick={handlePrint} className="btn-primary bg-black text-white hover:bg-zinc-800"><Printer className="h-4 w-4" /> Print / Save PDF</button><button onClick={() => setPreviewInv(null)} className="btn-ghost text-zinc-600 hover:bg-zinc-100">Close</button></div></div><div className="p-12 print-only-block"><div className="flex justify-between items-start mb-12"><div><div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center mb-4"><span className="text-white font-bold text-xl">$</span></div><h1 className="text-3xl font-bold tracking-tight">CashTrack</h1><p className="text-zinc-500 text-sm mt-1">Freelance Finance Dashboard</p></div><div className="text-right"><h2 className="text-4xl font-bold text-zinc-900">{previewInv.invoiceNumber}</h2><div className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${previewInv.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : previewInv.status === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-zinc-100 text-zinc-700'}`}>{previewInv.status}</div></div></div><div className="grid grid-cols-2 gap-8 mb-12"><div><div className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Bill To</div><div className="text-lg font-bold">{clients.find(c => c.id === previewInv.clientId)?.name || 'Unknown Client'}</div><div className="text-zinc-500 text-sm">{clients.find(c => c.id === previewInv.clientId)?.company}</div><div className="text-zinc-500 text-sm">{clients.find(c => c.id === previewInv.clientId)?.email}</div></div><div className="text-right"><div className="mb-4"><div className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Issue Date</div><div className="font-semibold">{new Date(previewInv.issueDate).toLocaleDateString()}</div></div><div><div className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Due Date</div><div className="font-semibold">{new Date(previewInv.dueDate).toLocaleDateString()}</div></div></div></div><table className="w-full mb-8"><thead><tr className="border-b-2 border-zinc-200"><th className="text-left py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Description</th><th className="text-right py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Amount</th></tr></thead><tbody>{previewInv.items.map((item, i) => (<tr key={i} className="border-b border-zinc-100"><td className="py-4 text-zinc-800">{item.description}</td><td className="py-4 text-right font-semibold tabular-nums">{formatCurrency(item.amount, previewInv.currency)}</td></tr>))}</tbody></table><div className="flex justify-end"><div className="w-64"><div className="flex justify-between items-center py-3 border-t-2 border-zinc-900"><span className="text-lg font-bold text-zinc-900">Total Due</span><span className="text-2xl font-bold text-zinc-900 tabular-nums">{formatCurrency(previewInv.total, previewInv.currency)}</span></div></div></div><div className="mt-16 pt-8 border-t border-zinc-200 text-center text-zinc-400 text-xs"><p>Thank you for your business!</p><p className="mt-1">Generated by CashTrack on {new Date().toLocaleDateString()}</p></div></div></div></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Issue Date</label>
+                <input type="date" value={form.issueDate} onChange={(e) => setForm({...form, issueDate: e.target.value})} className="input" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
+                <input type="date" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} className="input" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Items</label>
+              <div className="space-y-2">
+                {form.items.map((item, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input type="text" value={item.description} onChange={(e) => handleItemChange(index, 'description', e.target.value)} placeholder="Description" className="input flex-1" />
+                    <input type="number" value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', e.target.value)} placeholder="Qty" className="input w-20" />
+                    <input type="number" value={item.rate} onChange={(e) => handleItemChange(index, 'rate', e.target.value)} placeholder="Rate" className="input w-24" />
+                    {form.items.length > 1 && (
+                      <button onClick={() => handleRemoveItem(index)} className="px-3 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer">×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button onClick={handleAddItem} className="mt-2 text-xs text-emerald-400 hover:text-emerald-300 font-medium">+ Add Item</button>
+            </div>
+
+            <div className="pt-4 border-t border-ink-600/50">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-ink-300">Total Amount</span>
+                <span className="text-2xl font-bold text-emerald-400">{formatCurrency(calculateTotal(), 'USD', true)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
+              <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100">Create Invoice</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Generate from Tasks Modal */}
+      {user?.role === 'admin' && (
+        <Modal open={generateModalOpen} onClose={() => setGenerateModalOpen(false)} title="Generate Invoice from Completed Tasks" size="lg">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Select Client *</label>
+              <select 
+                value={selectedClientId} 
+                onChange={(e) => { setSelectedClientId(e.target.value); setSelectedTaskIds([]); }}
+                className="input"
+              >
+                <option value="">Select Client</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
+            {selectedClientId && (
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">
+                  Select Completed Tasks ({selectedTaskIds.length} selected)
+                </label>
+                {completedTasksForClient.length === 0 ? (
+                  <div className="text-center py-8 text-ink-400 text-sm">
+                    No completed tasks available for this client
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {completedTasksForClient.map(task => {
+                      const isSelected = selectedTaskIds.includes(task.id);
+                      return (
+                        <div 
+                          key={task.id}
+                          onClick={() => toggleTaskSelection(task.id)}
+                          className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                            isSelected 
+                              ? 'bg-emerald-500/10 border-emerald-500/50' 
+                              : 'bg-ink-900/40 border-ink-600/50 hover:bg-ink-900/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`h-5 w-5 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-ink-500'}`}>
+                                {isSelected && <CheckCircle className="h-3 w-3 text-white" />}
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium">{task.title}</div>
+                                <div className="text-xs text-ink-400">
+                                  {formatCurrency(parseFloat(task.compensation) || 0, task.currency || 'USD', true)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedTaskIds.length > 0 && (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-semibold text-emerald-400">Total Amount</span>
+                  <span className="text-2xl font-bold text-emerald-400">
+                    {formatCurrency(
+                      completedTasksForClient
+                        .filter(t => selectedTaskIds.includes(t.id))
+                        .reduce((sum, t) => sum + (parseFloat(t.compensation) || 0), 0),
+                      'USD',
+                      true
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setGenerateModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
+              <button 
+                onClick={handleGenerateFromTasks}
+                disabled={selectedTaskIds.length === 0}
+                className="btn-primary flex-1 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                Generate Invoice
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* View Invoice Modal */}
+      {viewingInvoice && (
+        <Modal open={!!viewingInvoice} onClose={() => setViewingInvoice(null)} title="Invoice Details" size="lg">
+          <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-bold">{viewingInvoice.invoiceNumber}</h3>
+                <p className="text-sm text-ink-400">
+                  {viewingInvoice.issueDate ? new Date(viewingInvoice.issueDate).toLocaleDateString() : ''}
+                </p>
+              </div>
+              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${STATUS_CONFIG[viewingInvoice.status]?.color}`}>
+                {STATUS_CONFIG[viewingInvoice.status]?.label}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-ink-900/50">
+              <div className="text-xs text-ink-400 mb-1">Bill To:</div>
+              <div className="font-semibold">{clients.find(c => c.id === viewingInvoice.clientId)?.name || 'Unknown Client'}</div>
+              <div className="text-sm text-ink-400">{clients.find(c => c.id === viewingInvoice.clientId)?.company}</div>
+            </div>
+
+            <div className="space-y-2">
+              {viewingInvoice.items?.map((item, index) => (
+                <div key={index} className="flex justify-between items-center py-2 border-b border-ink-600/50">
+                  <div>
+                    <div className="text-sm font-medium">{item.description || 'Item'}</div>
+                    <div className="text-xs text-ink-400">Qty: {item.quantity} × ${item.rate}</div>
+                  </div>
+                  <div className="font-semibold">${((item.quantity || 0) * (item.rate || 0)).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-ink-600/50 flex justify-between items-center">
+              <span className="text-sm font-semibold text-ink-300">Total</span>
+              <span className="text-2xl font-bold text-emerald-400">
+                {formatCurrency(viewingInvoice.total || 0, viewingInvoice.currency || 'USD', true)}
+              </span>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

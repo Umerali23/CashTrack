@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { convertAmount } from '../lib/currency';
 
-// --- INITIAL SEED DATA ---
 const INITIAL_DATA = {
   clients: [
     { 
@@ -36,12 +35,25 @@ const INITIAL_DATA = {
       id: 't1', 
       title: 'Build Login Page', 
       description: 'Create responsive login page with email and password fields', 
-      status: 'pending', 
+      status: 'completed', 
       dueDate: '2026-09-15', 
       compensation: 150, 
       currency: 'USD', 
       clientId: 'c1', 
       assigneeId: 'p1', 
+      completedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    },
+    { 
+      id: 't2', 
+      title: 'Design Dashboard UI', 
+      description: 'Create modern dashboard interface with charts', 
+      status: 'pending', 
+      dueDate: '2026-09-20', 
+      compensation: 200, 
+      currency: 'USD', 
+      clientId: 'c1', 
+      assigneeId: 'p2', 
       createdAt: new Date().toISOString()
     }
   ],
@@ -50,18 +62,34 @@ const INITIAL_DATA = {
 };
 
 export const useCashTrack = (user) => {
-  // Load data from LocalStorage or use Initial Data
   const [data, setData] = useState(() => {
-    const saved = localStorage.getItem('cashtrack_data');
-    return saved ? JSON.parse(saved) : INITIAL_DATA;
+    try {
+      const saved = localStorage.getItem('cashtrack_data');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          clients: Array.isArray(parsed.clients) ? parsed.clients : INITIAL_DATA.clients,
+          profiles: Array.isArray(parsed.profiles) ? parsed.profiles : INITIAL_DATA.profiles,
+          tasks: Array.isArray(parsed.tasks) ? parsed.tasks : INITIAL_DATA.tasks,
+          invoices: Array.isArray(parsed.invoices) ? parsed.invoices : [],
+          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : []
+        };
+      }
+    } catch (error) {
+      console.error('Error loading from localStorage:', error);
+    }
+    return INITIAL_DATA;
   });
 
   const [displayCurrency, setDisplayCurrency] = useState('PKR');
   const [theme, setTheme] = useState(() => localStorage.getItem('cashtrack_theme') || 'dark');
 
-  // Save to LocalStorage whenever data changes
   useEffect(() => {
-    localStorage.setItem('cashtrack_data', JSON.stringify(data));
+    try {
+      localStorage.setItem('cashtrack_data', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
   }, [data]);
 
   useEffect(() => {
@@ -71,114 +99,83 @@ export const useCashTrack = (user) => {
 
   // --- CRUD ACTIONS ---
 
-  // CLIENTS
   const addClient = (c) => {
-    const newClient = { 
-      ...c, 
-      id: `c${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    setData(prev => ({ ...prev, clients: [newClient, ...prev.clients] }));
+    const newClient = { ...c, id: `c${Date.now()}`, createdAt: new Date().toISOString() };
+    setData(prev => ({ ...prev, clients: [newClient, ...(prev.clients || [])] }));
   };
 
   const updateClient = (id, patch) => {
-    setData(prev => ({ 
-      ...prev, 
-      clients: prev.clients.map(c => c.id === id ? { ...c, ...patch } : c) 
-    }));
+    setData(prev => ({ ...prev, clients: (prev.clients || []).map(c => c.id === id ? { ...c, ...patch } : c) }));
   };
 
   const deleteClient = (id) => {
     setData(prev => ({ 
       ...prev, 
-      clients: prev.clients.filter(c => c.id !== id),
-      tasks: prev.tasks.map(t => t.clientId === id ? { ...t, clientId: null } : t)
+      clients: (prev.clients || []).filter(c => c.id !== id),
+      tasks: (prev.tasks || []).map(t => t.clientId === id ? { ...t, clientId: null } : t)
     }));
   };
 
-  // TEAM MEMBERS
   const addTeamMember = (m) => {
-    const newMember = { 
-      ...m, 
-      id: `p${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    setData(prev => ({ ...prev, profiles: [...prev.profiles, newMember] }));
+    const newMember = { ...m, id: `p${Date.now()}`, createdAt: new Date().toISOString() };
+    setData(prev => ({ ...prev, profiles: [...(prev.profiles || []), newMember] }));
     return { success: true, creds: { email: m.email, password: 'local123' } };
   };
 
   const updateTeamMember = (id, patch) => {
-    setData(prev => ({ 
-      ...prev, 
-      profiles: prev.profiles.map(m => m.id === id ? { ...m, ...patch } : m) 
-    }));
+    setData(prev => ({ ...prev, profiles: (prev.profiles || []).map(m => m.id === id ? { ...m, ...patch } : m) }));
   };
 
   const deleteTeamMember = (id) => {
     setData(prev => ({ 
       ...prev, 
-      profiles: prev.profiles.filter(m => m.id !== id),
-      tasks: prev.tasks.map(t => t.assigneeId === id ? { ...t, assigneeId: null } : t)
+      profiles: (prev.profiles || []).filter(m => m.id !== id),
+      tasks: (prev.tasks || []).map(t => t.assigneeId === id ? { ...t, assigneeId: null } : t)
     }));
   };
 
-  // TASKS
   const addTask = (t) => {
-    const newTask = { 
-      ...t, 
-      id: `t${Date.now()}`, 
-      createdAt: new Date().toISOString() 
-    };
-    setData(prev => ({ ...prev, tasks: [newTask, ...prev.tasks] }));
+    const newTask = { ...t, id: `t${Date.now()}`, createdAt: new Date().toISOString() };
+    setData(prev => ({ ...prev, tasks: [newTask, ...(prev.tasks || [])] }));
   };
 
   const updateTask = (id, patch) => {
     setData(prev => ({ 
       ...prev, 
-      tasks: prev.tasks.map(t => t.id === id ? { ...t, ...patch } : t) 
+      tasks: (prev.tasks || []).map(t => t.id === id ? { 
+        ...t, 
+        ...patch,
+        completedAt: patch.status === 'completed' && t.status !== 'completed' ? new Date().toISOString() : t.completedAt
+      } : t) 
     }));
   };
 
   const deleteTask = (id) => {
-    setData(prev => ({ 
-      ...prev, 
-      tasks: prev.tasks.filter(t => t.id !== id) 
-    }));
+    setData(prev => ({ ...prev, tasks: (prev.tasks || []).filter(t => t.id !== id) }));
   };
 
-  // INVOICES
   const addInvoice = (inv) => {
-    const newInv = { 
-      ...inv, 
-      id: `inv${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    setData(prev => ({ ...prev, invoices: [newInv, ...prev.invoices] }));
+    const newInv = { ...inv, id: `inv${Date.now()}`, createdAt: new Date().toISOString() };
+    setData(prev => ({ ...prev, invoices: [newInv, ...(prev.invoices || [])] }));
   };
 
   const updateInvoice = (id, patch) => {
-    setData(prev => ({ 
-      ...prev, 
-      invoices: prev.invoices.map(i => i.id === id ? { ...i, ...patch } : i) 
-    }));
+    setData(prev => ({ ...prev, invoices: (prev.invoices || []).map(i => i.id === id ? { ...i, ...patch } : i) }));
   };
 
   const deleteInvoice = (id) => {
-    setData(prev => ({ 
-      ...prev, 
-      invoices: prev.invoices.filter(i => i.id !== id) 
-    }));
+    setData(prev => ({ ...prev, invoices: (prev.invoices || []).filter(i => i.id !== id) }));
   };
 
   const markInvoiceAsPaid = (invoiceId) => {
-    const inv = data.invoices.find(i => i.id === invoiceId);
+    const inv = (data.invoices || []).find(i => i.id === invoiceId);
     if (!inv) return;
 
     const newTx = {
       id: `tx${Date.now()}`,
       type: 'income',
       amount: inv.total,
-      currency: inv.currency,
+      currency: inv.currency || 'USD',
       clientId: inv.clientId,
       assigneeId: inv.createdBy,
       category: 'Client Payment',
@@ -192,14 +189,45 @@ export const useCashTrack = (user) => {
 
     setData(prev => ({
       ...prev,
-      invoices: prev.invoices.map(i => i.id === invoiceId ? { ...i, status: 'paid' } : i),
-      transactions: [newTx, ...prev.transactions]
+      invoices: (prev.invoices || []).map(i => i.id === invoiceId ? { ...i, status: 'paid' } : i),
+      transactions: [newTx, ...(prev.transactions || [])]
     }));
   };
 
+  // Generate invoice from completed tasks
+  const generateInvoiceFromTasks = (taskIds, clientId) => {
+    const completedTasks = (data.tasks || []).filter(t => taskIds.includes(t.id) && t.status === 'completed');
+    if (completedTasks.length === 0) return null;
+
+    const total = completedTasks.reduce((sum, t) => sum + (parseFloat(t.compensation) || 0), 0);
+    const items = completedTasks.map(t => ({
+      description: t.title,
+      quantity: 1,
+      rate: parseFloat(t.compensation) || 0,
+      taskId: t.id
+    }));
+
+    const invoice = {
+      invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
+      clientId,
+      createdBy: user?.id,
+      status: 'draft',
+      total,
+      currency: 'USD',
+      items,
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      linkedTaskIds: taskIds
+    };
+
+    addInvoice(invoice);
+    return invoice;
+  };
+
   // --- DATA PROCESSING ---
+
   const toDisplay = useCallback((amount, originalCurrency) => 
-    convertAmount(amount, originalCurrency, displayCurrency), 
+    convertAmount(amount || 0, originalCurrency || 'USD', displayCurrency), 
     [displayCurrency]
   );
 
@@ -210,9 +238,9 @@ export const useCashTrack = (user) => {
     
     let income = 0, expense = 0, pending = 0, prevIncome = 0, prevExpense = 0;
 
-    data.transactions.forEach((t) => {
-      const d = new Date(t.date || t.createdAt);
-      const displayAmt = toDisplay(t.amount, t.currency);
+    (data.transactions || []).forEach((t) => {
+      const d = new Date(t.date || t.createdAt || Date.now());
+      const displayAmt = toDisplay(t.amount || 0, t.currency);
       
       if (d >= thisMonthStart) {
         if (t.type === 'income') { 
@@ -228,14 +256,37 @@ export const useCashTrack = (user) => {
     });
 
     return {
-      income, 
-      expense, 
-      net: income - expense, 
-      pending,
+      income, expense, net: income - expense, pending,
       incomeChange: prevIncome ? ((income - prevIncome) / prevIncome) * 100 : 0,
       expenseChange: prevExpense ? ((expense - prevExpense) / prevExpense) * 100 : 0,
     };
   }, [data.transactions, toDisplay]);
+
+  // Member-specific earnings calculation
+  const memberEarnings = useMemo(() => {
+    if (!user) return { total: 0, completedTasks: 0, pendingTasks: 0, taskBreakdown: [] };
+    
+    const myTasks = (data.tasks || []).filter(t => t.assigneeId === user.id);
+    const completedTasks = myTasks.filter(t => t.status === 'completed');
+    const pendingTasks = myTasks.filter(t => t.status !== 'completed');
+    
+    const totalEarnings = completedTasks.reduce((sum, t) => {
+      return sum + toDisplay(parseFloat(t.compensation) || 0, t.currency);
+    }, 0);
+
+    const taskBreakdown = completedTasks.map(t => ({
+      ...t,
+      earnings: toDisplay(parseFloat(t.compensation) || 0, t.currency),
+      client: (data.clients || []).find(c => c.id === t.clientId)
+    }));
+
+    return {
+      total: totalEarnings,
+      completedTasks: completedTasks.length,
+      pendingTasks: pendingTasks.length,
+      taskBreakdown
+    };
+  }, [data.tasks, data.clients, user, toDisplay]);
 
   const monthlySeries = useMemo(() => {
     const months = []; 
@@ -245,10 +296,10 @@ export const useCashTrack = (user) => {
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
       let inc = 0, exp = 0;
       
-      data.transactions.forEach((t) => {
-        const d = new Date(t.date || t.createdAt);
+      (data.transactions || []).forEach((t) => {
+        const d = new Date(t.date || t.createdAt || Date.now());
         if (d >= start && d < end) {
-          const amt = toDisplay(t.amount, t.currency);
+          const amt = toDisplay(t.amount || 0, t.currency);
           if (t.type === 'income') inc += amt; else exp += amt;
         }
       });
@@ -256,9 +307,7 @@ export const useCashTrack = (user) => {
       months.push({ 
         label: start.toLocaleString('en-US', { month: 'short' }), 
         year: start.getFullYear(), 
-        income: inc, 
-        expense: exp, 
-        profit: inc - exp 
+        income: inc, expense: exp, profit: inc - exp 
       });
     }
     return months;
@@ -266,16 +315,13 @@ export const useCashTrack = (user) => {
 
   const topClients = useMemo(() => {
     const map = {};
-    data.transactions.forEach((t) => {
+    (data.transactions || []).forEach((t) => {
       if (t.type !== 'income' || !t.clientId) return;
-      map[t.clientId] = (map[t.clientId] || 0) + toDisplay(t.amount, t.currency);
+      map[t.clientId] = (map[t.clientId] || 0) + toDisplay(t.amount || 0, t.currency);
     });
     
     return Object.entries(map)
-      .map(([id, total]) => ({ 
-        client: data.clients.find((c) => c.id === id), 
-        total 
-      }))
+      .map(([id, total]) => ({ client: (data.clients || []).find((c) => c.id === id), total }))
       .filter((x) => x.client)
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
@@ -285,30 +331,26 @@ export const useCashTrack = (user) => {
     if (user?.role !== 'admin') return []; 
     const map = {};
     
-    data.transactions.forEach((t) => {
-      if (t.type !== 'income' || !t.assigneeId) return;
-      map[t.assigneeId] = (map[t.assigneeId] || 0) + toDisplay(t.amount, t.currency);
+    (data.tasks || []).forEach((t) => {
+      if (t.status !== 'completed' || !t.assigneeId) return;
+      const earnings = toDisplay(parseFloat(t.compensation) || 0, t.currency);
+      map[t.assigneeId] = (map[t.assigneeId] || 0) + earnings;
     });
     
     return Object.entries(map)
-      .map(([id, total]) => ({ 
-        member: data.profiles.find((m) => m.id === id), 
-        total 
-      }))
+      .map(([id, total]) => ({ member: (data.profiles || []).find((m) => m.id === id), total }))
       .filter((x) => x.member)
       .sort((a, b) => b.total - a.total);
-  }, [data.transactions, data.profiles, toDisplay, user]);
+  }, [data.tasks, data.profiles, toDisplay, user]);
 
   return { 
-    data,
-    setData,
-    loading: false,
-    displayCurrency, setDisplayCurrency,
-    theme, setTheme,
+    data, setData, loading: false,
+    displayCurrency, setDisplayCurrency, theme, setTheme,
     addClient, updateClient, deleteClient,
     addTeamMember, updateTeamMember, deleteTeamMember,
     addTask, updateTask, deleteTask,
     addInvoice, updateInvoice, deleteInvoice, markInvoiceAsPaid,
-    toDisplay, aggregates, monthlySeries, topClients, earningsByMember
+    generateInvoiceFromTasks,
+    toDisplay, aggregates, monthlySeries, topClients, earningsByMember, memberEarnings
   };
 };
