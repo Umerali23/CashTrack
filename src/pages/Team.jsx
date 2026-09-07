@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import Modal from '../components/Modal';
+import Modal from '../components/Modal'; 
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
 
@@ -28,7 +28,8 @@ export default function Team({ ctx, toast }) {
   const { user } = useAuth();
   const { data, displayCurrency, toDisplay, updateTeamMember, deleteTeamMember, addTeamMember } = ctx;
   const currency = displayCurrency === 'ORIGINAL' ? 'PKR' : displayCurrency;
-  const team = data?.profiles || [];
+  const team = data?.profiles?.filter(p => p.role !== 'admin') || [];
+  const tasks = data?.tasks || [];
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -39,15 +40,27 @@ export default function Team({ ctx, toast }) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
+  // ✅ FIXED: Calculate earnings from completed tasks, not transactions
   const memberStats = useMemo(() => {
     return team.map((m) => {
-      let earnings = 0;
-      (data.transactions || []).forEach((t) => {
-        if (t.assigneeId === m.id && t.type === 'income') earnings += toDisplay(t.amount, t.currency);
-      });
-      return { member: m, earnings };
+      // Find all completed tasks assigned to this member
+      const completedTasks = tasks.filter(t => 
+        t.assigneeId === m.id && 
+        t.status === 'completed'
+      );
+      
+      // Calculate total earnings from completed tasks
+      const earnings = completedTasks.reduce((sum, t) => {
+        return sum + toDisplay(parseFloat(t.compensation) || 0, t.currency || 'USD');
+      }, 0);
+
+      return { 
+        member: m, 
+        earnings,
+        completedTasksCount: completedTasks.length
+      };
     });
-  }, [team, data.transactions, toDisplay]);
+  }, [team, tasks, toDisplay]);
 
   const openNew = () => {
     setEditing(null);
@@ -141,7 +154,7 @@ export default function Team({ ctx, toast }) {
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {memberStats.map(({ member, earnings }) => {
+          {memberStats.map(({ member, earnings, completedTasksCount }) => {
             const initials = (member.name || 'User').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
             return (
               <div key={member.id} className="glass rounded-2xl p-5 group hover:border-ink-500 transition-all duration-300">
@@ -174,6 +187,7 @@ export default function Team({ ctx, toast }) {
                 <div className="pt-4 border-t border-ink-600/50">
                   <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Total Earnings</div>
                   <div className="text-xl font-bold text-emerald-400">{formatCurrency(earnings, currency, true)}</div>
+                  <div className="text-xs text-ink-500 mt-1">{completedTasksCount} completed task{completedTasksCount !== 1 ? 's' : ''}</div>
                 </div>
               </div>
             );
@@ -202,7 +216,7 @@ export default function Team({ ctx, toast }) {
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-ink-400 mt-2">⚠️ Save these credentials securely!</p>
+              <p className="text-[10px] text-ink-400 mt-2">️ Save these credentials securely!</p>
             </div>
           )}
 
