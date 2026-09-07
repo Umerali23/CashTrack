@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Users, Briefcase, ArrowUpRight, CheckCircle, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Users, Briefcase, CheckCircle, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../lib/currency';
 
-export default function Dashboard({ ctx, onSelectClient, user }) {
+export default function Dashboard({ ctx, user }) {
   const { data, aggregates, memberEarnings, displayCurrency } = ctx;
   const currency = displayCurrency === 'ORIGINAL' ? 'USD' : displayCurrency;
 
@@ -11,36 +11,43 @@ export default function Dashboard({ ctx, onSelectClient, user }) {
   const transactions = data?.transactions || [];
   const clients = data?.clients || [];
   const profiles = data?.profiles || [];
-  const invoices = data?.invoices || [];
+
+  // ✅ FIXED: Calculate team stats directly from tasks for real-time updates
+  const teamStats = useMemo(() => {
+    return profiles
+      .filter(p => p.role !== 'admin')
+      .map(member => {
+        const memberTasks = tasks.filter(t => t.assigneeId === member.id);
+        const completed = memberTasks.filter(t => t.status === 'completed').length;
+        const pending = memberTasks.filter(t => t.status !== 'completed').length;
+        const earnings = memberTasks
+          .filter(t => t.status === 'completed')
+          .reduce((sum, t) => sum + (parseFloat(t.compensation) || 0), 0);
+        return { ...member, completed, pending, earnings };
+      });
+  }, [profiles, tasks]);
 
   const stats = useMemo(() => {
     const totalRevenue = aggregates?.income || 0;
     const totalExpenses = aggregates?.expense || 0;
     const netProfit = aggregates?.net || 0;
-    const pendingAmount = aggregates?.pending || 0;
-
     const activeTasks = tasks.filter(t => t.status !== 'completed').length;
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const totalClients = clients.length;
-    const totalMembers = profiles.filter(p => p.role === 'member').length;
-    const pendingInvoices = invoices.filter(i => i.status === 'draft' || i.status === 'sent').length;
+    const totalMembers = profiles.filter(p => p.role !== 'admin').length;
+    const pendingInvoices = (data?.invoices || []).filter(i => i.status === 'draft' || i.status === 'sent').length;
+    return { totalRevenue, totalExpenses, netProfit, activeTasks, completedTasks, totalClients, totalMembers, pendingInvoices };
+  }, [aggregates, tasks, clients, profiles, data?.invoices]);
 
-    return {
-      totalRevenue, totalExpenses, netProfit, pendingAmount,
-      activeTasks, completedTasks, totalClients, totalMembers, pendingInvoices
-    };
-  }, [aggregates, tasks, clients, profiles, invoices]);
-
-  // Member-specific stats
   const myStats = useMemo(() => {
     if (user?.role !== 'member') return null;
-    
     const myTasks = tasks.filter(t => t.assigneeId === user.id);
-    const myCompleted = myTasks.filter(t => t.status === 'completed').length;
-    const myPending = myTasks.filter(t => t.status !== 'completed').length;
-    const myEarnings = memberEarnings?.total || 0;
-
-    return { myTasks: myTasks.length, myCompleted, myPending, myEarnings };
+    return {
+      myCompleted: myTasks.filter(t => t.status === 'completed').length,
+      myPending: myTasks.filter(t => t.status !== 'completed').length,
+      myTotal: myTasks.length,
+      myEarnings: memberEarnings?.total || 0
+    };
   }, [tasks, memberEarnings, user]);
 
   const recentTransactions = useMemo(() => {
@@ -83,10 +90,6 @@ export default function Dashboard({ ctx, onSelectClient, user }) {
               <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
                 <DollarSign className="h-5 w-5 text-emerald-400" />
               </div>
-              <span className="text-xs text-emerald-400 flex items-center gap-1">
-                <ArrowUpRight className="h-3 w-3" />
-                {aggregates?.incomeChange ? `${aggregates.incomeChange.toFixed(1)}%` : '0%'}
-              </span>
             </div>
             <div className="text-2xl font-bold tracking-tight">
               {formatCurrency(stats.totalRevenue, currency, true)}
@@ -120,14 +123,14 @@ export default function Dashboard({ ctx, onSelectClient, user }) {
 
           <div className="glass rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                <Briefcase className="h-5 w-5 text-amber-400" />
+              <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <Briefcase className="h-5 w-5 text-blue-400" />
               </div>
             </div>
             <div className="text-2xl font-bold tracking-tight">
-              {formatCurrency(stats.pendingAmount, currency, true)}
+              {stats.activeTasks}
             </div>
-            <div className="text-xs text-ink-400 mt-1">Pending Amount</div>
+            <div className="text-xs text-ink-400 mt-1">Active Tasks</div>
           </div>
         </div>
       )}
@@ -178,14 +181,14 @@ export default function Dashboard({ ctx, onSelectClient, user }) {
               </div>
             </div>
             <div className="text-2xl font-bold tracking-tight">
-              {myStats.myTasks}
+              {myStats.myTotal}
             </div>
             <div className="text-xs text-ink-400 mt-1">Total Tasks</div>
           </div>
         </div>
       )}
 
-      {/* Quick Stats Row */}
+      {/* Quick Stats Row (Admin Only) */}
       {user?.role === 'admin' && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="glass rounded-xl p-4 flex items-center gap-3">
@@ -219,9 +222,41 @@ export default function Dashboard({ ctx, onSelectClient, user }) {
         </div>
       )}
 
+      {/* Team Status Section (Admin Only) - FIXED */}
+      {user?.role === 'admin' && (
+        <div className="glass rounded-2xl p-6">
+          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+            <Users className="h-5 w-5 text-violet-400" /> Team Status
+          </h3>
+          {teamStats.length === 0 ? (
+            <div className="text-center py-8 text-ink-400 text-sm">No team members yet.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {teamStats.map(member => (
+                <div key={member.id} className="p-4 rounded-xl bg-ink-900/40 border border-ink-600/50 flex items-center justify-between hover:bg-ink-900/60 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-white font-bold`}>
+                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">{member.name}</div>
+                      <div className="text-xs text-ink-400">{member.role}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-emerald-400">{formatCurrency(member.earnings, currency, true)}</div>
+                    <div className="text-xs text-ink-400">{member.completed} done • {member.pending} pending</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Transactions */}
+        {/* Recent Transactions (Admin Only) */}
         {user?.role === 'admin' && (
           <div className="glass rounded-2xl p-5">
             <h3 className="font-bold text-lg mb-4">Recent Transactions</h3>

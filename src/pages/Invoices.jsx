@@ -13,7 +13,7 @@ const STATUS_CONFIG = {
 
 export default function Invoices({ ctx, toast }) {
   const { user } = useAuth();
-  const { data, addInvoice, markInvoiceAsPaid, generateInvoiceFromTasks } = ctx;
+  const { data, addInvoice, markInvoiceAsPaid, generateInvoiceFromTasks, deleteInvoice } = ctx;
   const currency = ctx.displayCurrency === 'ORIGINAL' ? 'USD' : ctx.displayCurrency;
 
   const invoices = data?.invoices || [];
@@ -25,27 +25,25 @@ export default function Invoices({ ctx, toast }) {
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
-  const [form, setForm] = useState({
-    clientId: '',
-    items: [{ description: '', quantity: 1, rate: 0 }],
-    issueDate: new Date().toISOString().split('T')[0],
-    dueDate: '',
-    status: 'draft'
+  
+  // ✅ FIXED: Simplified form with single amount field
+  const [form, setForm] = useState({ 
+    clientId: '', 
+    total: '', 
+    description: '', 
+    issueDate: new Date().toISOString().split('T')[0], 
+    dueDate: '', 
+    status: 'draft' 
   });
 
   const visibleInvoices = useMemo(() => {
     if (user?.role === 'admin') return invoices;
-    const memberTaskClientIds = tasks
-      .filter(t => t.assigneeId === user.id)
-      .map(t => t.clientId);
+    const memberTaskClientIds = tasks.filter(t => t.assigneeId === user.id).map(t => t.clientId);
     return invoices.filter(inv => memberTaskClientIds.includes(inv.clientId));
   }, [invoices, tasks, user]);
 
-  const totalAmount = useMemo(() => {
-    return visibleInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
-  }, [visibleInvoices]);
+  const totalAmount = useMemo(() => visibleInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0), [visibleInvoices]);
 
-  // Get completed tasks for a specific client (for invoice generation)
   const completedTasksForClient = useMemo(() => {
     if (!selectedClientId) return [];
     return tasks.filter(t => 
@@ -56,59 +54,44 @@ export default function Invoices({ ctx, toast }) {
   }, [selectedClientId, tasks, invoices]);
 
   const openNew = () => {
-    setForm({
-      clientId: '',
-      items: [{ description: '', quantity: 1, rate: 0 }],
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: '',
-      status: 'draft'
+    setForm({ 
+      clientId: '', 
+      total: '', 
+      description: '', 
+      issueDate: new Date().toISOString().split('T')[0], 
+      dueDate: '', 
+      status: 'draft' 
     });
     setModalOpen(true);
   };
 
-  const calculateTotal = () => {
-    return form.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.rate || 0)), 0);
-  };
-
-  const handleAddItem = () => {
-    setForm({ ...form, items: [...form.items, { description: '', quantity: 1, rate: 0 }] });
-  };
-
-  const handleRemoveItem = (index) => {
-    setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
-  };
-
-  const handleItemChange = (index, field, value) => {
-    const newItems = [...form.items];
-    newItems[index][field] = field === 'description' ? value : parseFloat(value) || 0;
-    setForm({ ...form, items: newItems });
-  };
-
   const handleSave = async () => {
-    if (!form.clientId) return toast('Please select a client', 'error');
-
+    if (!form.clientId || !form.total) return toast('Client and Amount are required', 'error');
+    
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-    const total = calculateTotal();
-
     await addInvoice({
-      invoiceNumber, clientId: form.clientId, createdBy: user.id,
-      status: form.status, total, currency: 'USD', items: form.items,
-      issueDate: form.issueDate, dueDate: form.dueDate
+      invoiceNumber, 
+      clientId: form.clientId, 
+      createdBy: user.id, 
+      status: form.status,
+      total: parseFloat(form.total), 
+      currency: 'USD',
+      items: [{ description: form.description || 'Services', amount: parseFloat(form.total) }],
+      issueDate: form.issueDate, 
+      dueDate: form.dueDate
     });
-
+    
     toast('Invoice created successfully', 'success');
     setModalOpen(false);
   };
 
   const handleGenerateFromTasks = () => {
-    if (!selectedClientId) return toast('Please select a client', 'error');
-    if (selectedTaskIds.length === 0) return toast('Please select at least one task', 'error');
-
+    if (!selectedClientId || selectedTaskIds.length === 0) return toast('Select client and tasks', 'error');
     const invoice = generateInvoiceFromTasks(selectedTaskIds, selectedClientId);
     if (invoice) {
-      toast(`Invoice ${invoice.invoiceNumber} created from ${selectedTaskIds.length} tasks`, 'success');
-      setGenerateModalOpen(false);
-      setSelectedTaskIds([]);
+      toast(`Invoice ${invoice.invoiceNumber} created`, 'success');
+      setGenerateModalOpen(false); 
+      setSelectedTaskIds([]); 
       setSelectedClientId('');
     }
   };
@@ -126,7 +109,7 @@ export default function Invoices({ ctx, toast }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this invoice?')) return;
-    ctx.deleteInvoice?.(id);
+    if (deleteInvoice) deleteInvoice(id);
     toast('Invoice deleted', 'info');
   };
 
@@ -145,7 +128,7 @@ export default function Invoices({ ctx, toast }) {
               onClick={() => setGenerateModalOpen(true)}
               className="btn-primary bg-emerald-500 text-white hover:bg-emerald-600"
             >
-              <FileText className="h-4 w-4" strokeWidth={2.5} /> Generate from Tasks
+              <FileText className="h-4 w-4" /> Generate from Tasks
             </button>
             <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
               <Plus className="h-4 w-4" strokeWidth={2.5} /> Create Invoice
@@ -168,8 +151,6 @@ export default function Invoices({ ctx, toast }) {
                 <tr>
                   <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Invoice</th>
                   <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Client</th>
-                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Issue Date</th>
-                  <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Due Date</th>
                   <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Amount</th>
                   <th className="text-left text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Status</th>
                   <th className="text-right text-xs font-semibold text-ink-300 uppercase tracking-wider px-6 py-4">Actions</th>
@@ -188,12 +169,6 @@ export default function Invoices({ ctx, toast }) {
                       <td className="px-6 py-4">
                         <div className="text-sm">{client?.name || 'Unknown Client'}</div>
                         <div className="text-xs text-ink-400">{client?.company}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-ink-300">
-                        {invoice.issueDate ? new Date(invoice.issueDate).toLocaleDateString() : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-ink-300">
-                        {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '-'}
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-bold text-emerald-400">
@@ -244,9 +219,9 @@ export default function Invoices({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create Invoice Modal */}
+      {/* Create Invoice Modal - SIMPLIFIED (Single Amount Field) */}
       {user?.role === 'admin' && (
-        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Invoice" size="lg">
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Invoice">
           <div className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
@@ -255,39 +230,46 @@ export default function Invoices({ ctx, toast }) {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name} - {c.company}</option>)}
               </select>
             </div>
-
+            
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Total Amount *</label>
+              <input 
+                type="number" 
+                value={form.total} 
+                onChange={(e) => setForm({...form, total: e.target.value})} 
+                className="input" 
+                placeholder="0.00" 
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description / Items</label>
+              <textarea 
+                value={form.description} 
+                onChange={(e) => setForm({...form, description: e.target.value})} 
+                className="input h-20 resize-none" 
+                placeholder="e.g. Web Development Services" 
+              />
+            </div>
+            
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Issue Date</label>
-                <input type="date" value={form.issueDate} onChange={(e) => setForm({...form, issueDate: e.target.value})} className="input" />
+                <input 
+                  type="date" 
+                  value={form.issueDate} 
+                  onChange={(e) => setForm({...form, issueDate: e.target.value})} 
+                  className="input" 
+                />
               </div>
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
-                <input type="date" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} className="input" />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Items</label>
-              <div className="space-y-2">
-                {form.items.map((item, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input type="text" value={item.description} onChange={(e) => handleItemChange(index, 'description', e.target.value)} placeholder="Description" className="input flex-1" />
-                    <input type="number" value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', e.target.value)} placeholder="Qty" className="input w-20" />
-                    <input type="number" value={item.rate} onChange={(e) => handleItemChange(index, 'rate', e.target.value)} placeholder="Rate" className="input w-24" />
-                    {form.items.length > 1 && (
-                      <button onClick={() => handleRemoveItem(index)} className="px-3 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer">×</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <button onClick={handleAddItem} className="mt-2 text-xs text-emerald-400 hover:text-emerald-300 font-medium">+ Add Item</button>
-            </div>
-
-            <div className="pt-4 border-t border-ink-600/50">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-ink-300">Total Amount</span>
-                <span className="text-2xl font-bold text-emerald-400">{formatCurrency(calculateTotal(), 'USD', true)}</span>
+                <input 
+                  type="date" 
+                  value={form.dueDate} 
+                  onChange={(e) => setForm({...form, dueDate: e.target.value})} 
+                  className="input" 
+                />
               </div>
             </div>
 
@@ -408,8 +390,12 @@ export default function Invoices({ ctx, toast }) {
 
             <div className="p-4 rounded-xl bg-ink-900/50">
               <div className="text-xs text-ink-400 mb-1">Bill To:</div>
-              <div className="font-semibold">{clients.find(c => c.id === viewingInvoice.clientId)?.name || 'Unknown Client'}</div>
-              <div className="text-sm text-ink-400">{clients.find(c => c.id === viewingInvoice.clientId)?.company}</div>
+              <div className="font-semibold">
+                {clients.find(c => c.id === viewingInvoice.clientId)?.name || 'Unknown Client'}
+              </div>
+              <div className="text-sm text-ink-400">
+                {clients.find(c => c.id === viewingInvoice.clientId)?.company}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -417,9 +403,10 @@ export default function Invoices({ ctx, toast }) {
                 <div key={index} className="flex justify-between items-center py-2 border-b border-ink-600/50">
                   <div>
                     <div className="text-sm font-medium">{item.description || 'Item'}</div>
-                    <div className="text-xs text-ink-400">Qty: {item.quantity} × ${item.rate}</div>
                   </div>
-                  <div className="font-semibold">${((item.quantity || 0) * (item.rate || 0)).toFixed(2)}</div>
+                  <div className="font-semibold">
+                    {formatCurrency(item.amount || 0, 'USD', true)}
+                  </div>
                 </div>
               ))}
             </div>
