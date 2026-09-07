@@ -36,6 +36,8 @@ const INITIAL_DATA = {
       title: 'Build Login Page', 
       description: 'Create responsive login page with email and password fields', 
       status: 'completed', 
+      priority: 'high',
+      tags: ['Frontend', 'React'],
       dueDate: '2026-09-15', 
       compensation: 150, 
       currency: 'USD', 
@@ -49,6 +51,8 @@ const INITIAL_DATA = {
       title: 'Design Dashboard UI', 
       description: 'Create modern dashboard interface with charts', 
       status: 'pending', 
+      priority: 'medium',
+      tags: ['Design', 'UI/UX'],
       dueDate: '2026-09-20', 
       compensation: 200, 
       currency: 'USD', 
@@ -58,7 +62,8 @@ const INITIAL_DATA = {
     }
   ],
   invoices: [],
-  transactions: []
+  transactions: [],
+  payouts: []
 };
 
 export const useCashTrack = (user) => {
@@ -72,7 +77,8 @@ export const useCashTrack = (user) => {
           profiles: Array.isArray(parsed.profiles) ? parsed.profiles : INITIAL_DATA.profiles,
           tasks: Array.isArray(parsed.tasks) ? parsed.tasks : INITIAL_DATA.tasks,
           invoices: Array.isArray(parsed.invoices) ? parsed.invoices : [],
-          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : []
+          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+          payouts: Array.isArray(parsed.payouts) ? parsed.payouts : []
         };
       }
     } catch (error) {
@@ -135,7 +141,13 @@ export const useCashTrack = (user) => {
   };
 
   const addTask = (t) => {
-    const newTask = { ...t, id: `t${Date.now()}`, createdAt: new Date().toISOString() };
+    const newTask = { 
+      ...t, 
+      id: `t${Date.now()}`, 
+      createdAt: new Date().toISOString(),
+      priority: t.priority || 'medium',
+      tags: t.tags || []
+    };
     setData(prev => ({ ...prev, tasks: [newTask, ...(prev.tasks || [])] }));
   };
 
@@ -171,6 +183,7 @@ export const useCashTrack = (user) => {
     const inv = (data.invoices || []).find(i => i.id === invoiceId);
     if (!inv) return;
 
+    // Create transaction
     const newTx = {
       id: `tx${Date.now()}`,
       type: 'income',
@@ -187,14 +200,39 @@ export const useCashTrack = (user) => {
       createdAt: new Date().toISOString()
     };
 
+    // Create payouts for team members who worked on tasks in this invoice
+    const newPayouts = [];
+    if (inv.items && inv.items.length > 0) {
+      inv.items.forEach(item => {
+        if (item.taskId) {
+          const task = (data.tasks || []).find(t => t.id === item.taskId);
+          if (task && task.assigneeId) {
+            newPayouts.push({
+              id: `po${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
+              memberId: task.assigneeId,
+              amount: parseFloat(task.compensation) || 0,
+              currency: task.currency || 'USD',
+              taskId: task.id,
+              taskTitle: task.title,
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoiceNumber,
+              date: new Date().toISOString().split('T')[0],
+              status: 'paid',
+              createdAt: new Date().toISOString()
+            });
+          }
+        }
+      });
+    }
+
     setData(prev => ({
       ...prev,
       invoices: (prev.invoices || []).map(i => i.id === invoiceId ? { ...i, status: 'paid' } : i),
-      transactions: [newTx, ...(prev.transactions || [])]
+      transactions: [newTx, ...(prev.transactions || [])],
+      payouts: [...newPayouts, ...(prev.payouts || [])]
     }));
   };
 
-  // Generate invoice from completed tasks
   const generateInvoiceFromTasks = (taskIds, clientId) => {
     const completedTasks = (data.tasks || []).filter(t => taskIds.includes(t.id) && t.status === 'completed');
     if (completedTasks.length === 0) return null;
@@ -264,7 +302,7 @@ export const useCashTrack = (user) => {
 
   // Member-specific earnings calculation
   const memberEarnings = useMemo(() => {
-    if (!user) return { total: 0, completedTasks: 0, pendingTasks: 0, taskBreakdown: [] };
+    if (!user) return { total: 0, completedTasks: 0, pendingTasks: 0, taskBreakdown: [], payouts: [] };
     
     const myTasks = (data.tasks || []).filter(t => t.assigneeId === user.id);
     const completedTasks = myTasks.filter(t => t.status === 'completed');
@@ -280,13 +318,17 @@ export const useCashTrack = (user) => {
       client: (data.clients || []).find(c => c.id === t.clientId)
     }));
 
+    // Get payouts for this member
+    const myPayouts = (data.payouts || []).filter(p => p.memberId === user.id);
+
     return {
       total: totalEarnings,
       completedTasks: completedTasks.length,
       pendingTasks: pendingTasks.length,
-      taskBreakdown
+      taskBreakdown,
+      payouts: myPayouts
     };
-  }, [data.tasks, data.clients, user, toDisplay]);
+  }, [data.tasks, data.clients, data.payouts, user, toDisplay]);
 
   const monthlySeries = useMemo(() => {
     const months = []; 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, CheckCircle, Clock, AlertCircle, Calendar, User, Briefcase } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, Calendar, User, Briefcase, Tag, Flag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
@@ -10,17 +10,20 @@ const STATUS_CONFIG = {
   'completed': { label: 'Completed', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle },
 };
 
+const PRIORITY_CONFIG = {
+  'low': { label: 'Low', color: 'bg-slate-500/10 text-slate-400' },
+  'medium': { label: 'Medium', color: 'bg-blue-500/10 text-blue-400' },
+  'high': { label: 'High', color: 'bg-amber-500/10 text-amber-400', icon: Flag },
+  'urgent': { label: 'Urgent', color: 'bg-rose-500/10 text-rose-400', icon: Flag },
+};
+
 export default function Tasks({ ctx, toast }) {
   const { user } = useAuth();
-  
-  // ✅ Safely extract data with fallbacks
   const tasks = ctx.data?.tasks || [];
   const clients = ctx.data?.clients || [];
   const profiles = ctx.data?.profiles || [];
+  const invoices = ctx.data?.invoices || [];
   const { addTask, updateTask } = ctx;
-
-  // Debug logging (remove this in production)
-  console.log('Tasks Page - Data:', { tasksCount: tasks.length, clientsCount: clients.length, membersCount: profiles.length });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -32,19 +35,19 @@ export default function Tasks({ ctx, toast }) {
     compensation: '', 
     dueDate: '', 
     status: 'pending',
+    priority: 'medium',
+    tags: '',
     currency: 'USD'
   });
 
-  // Filter tasks based on Role
   const visibleTasks = useMemo(() => {
     if (user?.role === 'admin') return tasks;
-    // Members only see tasks assigned to them
     return tasks.filter(t => t.assigneeId === user.id);
   }, [tasks, user]);
 
-  // Get only team members (not admins) for assignment
+  // ✅ FIXED: Show all non-admin profiles (includes all team members regardless of role title)
   const teamMembers = useMemo(() => {
-    return profiles.filter(p => p.role === 'member');
+    return profiles.filter(p => p.role !== 'admin');
   }, [profiles]);
 
   const openNew = () => {
@@ -57,6 +60,8 @@ export default function Tasks({ ctx, toast }) {
       compensation: '', 
       dueDate: '', 
       status: 'pending',
+      priority: 'medium',
+      tags: '',
       currency: 'USD'
     });
     setModalOpen(true);
@@ -72,6 +77,8 @@ export default function Tasks({ ctx, toast }) {
       compensation: task.compensation || '',
       dueDate: task.dueDate || '',
       status: task.status || 'pending',
+      priority: task.priority || 'medium',
+      tags: task.tags ? task.tags.join(', ') : '',
       currency: task.currency || 'USD'
     });
     setModalOpen(true);
@@ -89,11 +96,24 @@ export default function Tasks({ ctx, toast }) {
     }
     
     try {
+      const taskData = {
+        title: form.title,
+        description: form.description,
+        status: form.status,
+        dueDate: form.dueDate,
+        compensation: parseFloat(form.compensation) || 0,
+        currency: form.currency,
+        clientId: form.clientId,
+        assigneeId: form.assigneeId,
+        priority: form.priority,
+        tags: form.tags.split(',').map(t => t.trim()).filter(t => t)
+      };
+
       if (editingTask) {
-        await updateTask(editingTask.id, form);
+        await updateTask(editingTask.id, taskData);
         toast('Task updated successfully', 'success');
       } else {
-        await addTask(form);
+        await addTask(taskData);
         toast('Task created and assigned', 'success');
       }
       setModalOpen(false);
@@ -115,7 +135,6 @@ export default function Tasks({ ctx, toast }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -132,7 +151,6 @@ export default function Tasks({ ctx, toast }) {
         )}
       </div>
 
-      {/* Task Grid */}
       {visibleTasks.length === 0 ? (
         <EmptyState 
           title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"} 
@@ -145,15 +163,22 @@ export default function Tasks({ ctx, toast }) {
             const StatusIcon = STATUS_CONFIG[task.status]?.icon || Clock;
             const client = clients.find(c => c.id === task.clientId);
             const assignee = profiles.find(p => p.id === task.assigneeId);
+            const priorityConfig = PRIORITY_CONFIG[task.priority || 'medium'];
 
             return (
               <div key={task.id} className="glass rounded-2xl p-5 hover:border-ink-500 transition-all duration-300 flex flex-col h-full">
-                {/* Top Row: Status & Actions */}
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_CONFIG[task.status]?.color}`}>
-                    <StatusIcon className="h-3 w-3" />
-                    {STATUS_CONFIG[task.status]?.label}
-                  </span>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex gap-2 flex-wrap">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_CONFIG[task.status]?.color}`}>
+                      <StatusIcon className="h-3 w-3" />
+                      {STATUS_CONFIG[task.status]?.label}
+                    </span>
+                    {priorityConfig && (
+                      <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase ${priorityConfig.color}`}>
+                        {priorityConfig.label}
+                      </span>
+                    )}
+                  </div>
                   
                   <div className="flex gap-2">
                     {user?.role === 'admin' && (
@@ -162,7 +187,7 @@ export default function Tasks({ ctx, toast }) {
                         className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white cursor-pointer transition-colors"
                         title="Edit task"
                       >
-                        <Briefcase className="h-3.5 w-3.5" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
                     )}
                     {user?.role !== 'admin' && task.status !== 'completed' && (
@@ -176,16 +201,25 @@ export default function Tasks({ ctx, toast }) {
                   </div>
                 </div>
 
-                {/* Content */}
                 <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={task.title}>
                   {task.title}
                 </h3>
-                <p className="text-xs text-ink-400 mb-4 line-clamp-2 flex-grow">
+                <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow">
                   {task.description || 'No description provided.'}
                 </p>
 
-                {/* Meta Data */}
-                <div className="space-y-2 pt-4 border-t border-ink-600/50 text-xs">
+                {task.tags && task.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {task.tags.map((tag, index) => (
+                      <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                        <Tag className="h-2.5 w-2.5" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-3 border-t border-ink-600/50 text-xs">
                   {client && (
                     <div className="flex items-center gap-2 text-ink-300">
                       <Briefcase className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
@@ -214,122 +248,98 @@ export default function Tasks({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create/Edit Modal (Admin Only) */}
-      {user?.role === 'admin' && (
-        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
-          <div className="space-y-4">
-            {/* Task Title */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
+            <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="input" placeholder="e.g. Design Homepage" />
+          </div>
+          
+          <div>
+            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
+            <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="input h-20 resize-none" placeholder="Task details, requirements, etc..." />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
-              <input 
-                type="text" 
-                value={form.title} 
-                onChange={(e) => setForm({...form, title: e.target.value})} 
-                className="input" 
-                placeholder="e.g. Design Homepage" 
-              />
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
+              {clients.length === 0 && (
+                <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                  ️ No clients found. Add a client first.
+                </div>
+              )}
+              <select 
+                value={form.clientId} 
+                onChange={(e) => setForm({...form, clientId: e.target.value})} 
+                className="input"
+                disabled={clients.length === 0}
+              >
+                <option value="">Select Client</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
-            
-            {/* Description */}
             <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
-              <textarea 
-                value={form.description} 
-                onChange={(e) => setForm({...form, description: e.target.value})} 
-                className="input h-20 resize-none" 
-                placeholder="Task details, requirements, etc..." 
-              />
-            </div>
-
-            {/* Client and Assignee Selection */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Client Selection */}
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
-                {clients.length === 0 && (
-                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                    ⚠️ No clients found. <a href="/clients" className="underline hover:text-amber-300">Add a client first</a>
-                  </div>
-                )}
-                <select 
-                  value={form.clientId} 
-                  onChange={(e) => setForm({...form, clientId: e.target.value})} 
-                  className="input"
-                  disabled={clients.length === 0}
-                >
-                  <option value="">Select Client</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Team Member Selection */}
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
-                {teamMembers.length === 0 && (
-                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                    ⚠️ No team members. <a href="/team" className="underline hover:text-amber-300">Add a member</a>
-                  </div>
-                )}
-                <select 
-                  value={form.assigneeId} 
-                  onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
-                  className="input"
-                  disabled={teamMembers.length === 0}
-                >
-                  <option value="">Select Member</option>
-                  {teamMembers.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Compensation and Due Date */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Compensation</label>
-                <input 
-                  type="number" 
-                  value={form.compensation} 
-                  onChange={(e) => setForm({...form, compensation: e.target.value})} 
-                  className="input" 
-                  placeholder="0.00" 
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
-                <input 
-                  type="date" 
-                  value={form.dueDate} 
-                  onChange={(e) => setForm({...form, dueDate: e.target.value})} 
-                  className="input" 
-                />
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-2 pt-2">
-              <button 
-                onClick={() => setModalOpen(false)} 
-                className="btn-ghost flex-1 border border-ink-600 hover:bg-ink-800/50"
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
+              {teamMembers.length === 0 && (
+                <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                  ⚠️ No team members. Add a member first.
+                </div>
+              )}
+              <select 
+                value={form.assigneeId} 
+                onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
+                className="input"
+                disabled={teamMembers.length === 0}
               >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSave} 
-                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!form.title || !form.clientId || !form.assigneeId}
-              >
-                {editingTask ? 'Save Changes' : 'Create Task'}
-              </button>
+                <option value="">Select Member</option>
+                {teamMembers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.role})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        </Modal>
-      )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Priority</label>
+              <select value={form.priority} onChange={(e) => setForm({...form, priority: e.target.value})} className="input">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Tags (comma separated)</label>
+              <input type="text" value={form.tags} onChange={(e) => setForm({...form, tags: e.target.value})} className="input" placeholder="Design, Frontend, React" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Compensation</label>
+              <input type="number" value={form.compensation} onChange={(e) => setForm({...form, compensation: e.target.value})} className="input" placeholder="0.00" min="0" step="0.01" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
+              <input type="date" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} className="input" />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600 hover:bg-ink-800/50">Cancel</button>
+            <button 
+              onClick={handleSave} 
+              className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed" 
+              disabled={!form.title || !form.clientId || !form.assigneeId}
+            >
+              {editingTask ? 'Save Changes' : 'Create Task'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

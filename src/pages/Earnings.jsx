@@ -9,7 +9,6 @@ export default function Earnings({ ctx, user }) {
   const tasks = data?.tasks || [];
   const profiles = data?.profiles || [];
 
-  // Admin sees all members' earnings
   const allMembersEarnings = useMemo(() => {
     if (user?.role !== 'admin') return [];
     
@@ -31,12 +30,10 @@ export default function Earnings({ ctx, user }) {
       .sort((a, b) => b.total - a.total);
   }, [profiles, tasks, user, toDisplay]);
 
-  // Member sees only their own earnings
   const myEarnings = memberEarnings;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
           {user?.role === 'admin' ? 'Team Earnings' : 'My Earnings'}
@@ -48,10 +45,8 @@ export default function Earnings({ ctx, user }) {
         </p>
       </div>
 
-      {/* Member View: Personal Earnings Dashboard */}
       {user?.role !== 'admin' && (
         <>
-          {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="glass rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
@@ -90,7 +85,6 @@ export default function Earnings({ ctx, user }) {
             </div>
           </div>
 
-          {/* Earnings Breakdown */}
           <div className="glass rounded-2xl p-6">
             <h3 className="font-bold text-lg mb-4">Earnings Breakdown</h3>
             
@@ -128,7 +122,36 @@ export default function Earnings({ ctx, user }) {
             )}
           </div>
 
-          {/* Summary Card */}
+          {/* Payout History */}
+          {myEarnings.payouts && myEarnings.payouts.length > 0 && (
+            <div className="glass rounded-2xl p-6 mt-6">
+              <h3 className="font-bold text-lg mb-4">💰 Payout History</h3>
+              <div className="space-y-3">
+                {myEarnings.payouts.map((payout) => (
+                  <div key={payout.id} className="flex items-center justify-between p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10 transition-colors">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="h-10 w-10 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle className="h-5 w-5 text-emerald-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-sm">{payout.taskTitle}</div>
+                        <div className="text-xs text-ink-400">
+                          Invoice {payout.invoiceNumber} • Paid {new Date(payout.date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div className="text-lg font-bold text-emerald-400">
+                        {formatCurrency(payout.amount, payout.currency || 'USD', true)}
+                      </div>
+                      <div className="text-xs text-ink-400">Paid</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {myEarnings.taskBreakdown.length > 0 && (
             <div className="glass rounded-2xl p-6 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
               <div className="flex items-center justify-between">
@@ -145,10 +168,8 @@ export default function Earnings({ ctx, user }) {
         </>
       )}
 
-      {/* Admin View: All Team Members' Earnings */}
       {user?.role === 'admin' && (
         <>
-          {/* Team Overview Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="glass rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
@@ -187,7 +208,6 @@ export default function Earnings({ ctx, user }) {
             </div>
           </div>
 
-          {/* Members Earnings List */}
           <div className="glass rounded-2xl p-6">
             <h3 className="font-bold text-lg mb-4">Team Member Earnings</h3>
             
@@ -219,7 +239,6 @@ export default function Earnings({ ctx, user }) {
                       </div>
                     </div>
 
-                    {/* Member's Tasks */}
                     {memberData.tasks.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-ink-600/50 space-y-2">
                         {memberData.tasks.slice(0, 3).map(task => (
