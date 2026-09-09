@@ -15,7 +15,6 @@ export default function Login() {
     setLoading(true);
 
     const result = await login(email, password);
-    
     if (!result.success) {
       setError(result.error || 'Invalid credentials');
     }
@@ -24,7 +23,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-ink-950">
-      {/* Background Blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="blob bg-emerald-500/20 top-[-10%] left-[-10%] h-[500px] w-[500px]" />
         <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
@@ -50,15 +48,7 @@ export default function Login() {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              {/* ✅ FIXED: White background, dark text */}
-              <input 
-                type="email" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all"
-                placeholder="admin@cashtrack.com"
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all" placeholder="admin@cashtrack.com" />
             </div>
           </div>
 
@@ -66,32 +56,14 @@ export default function Login() {
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-              {/* ✅ FIXED: White background, dark text */}
-              <input 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all"
-                placeholder="••••••••"
-              />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full pl-10 pr-4 py-3 rounded-xl bg-white text-ink-950 border border-ink-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder-ink-400 transition-all" placeholder="••••••••" />
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-white text-ink-950 font-bold hover:bg-ink-100 transition-colors disabled:opacity-50 mt-2"
-          >
+          <button type="submit" disabled={loading} className="w-full py-3 rounded-xl bg-white text-ink-950 font-bold hover:bg-ink-100 transition-colors disabled:opacity-50 mt-2">
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        <div className="mt-6 p-4 rounded-xl bg-ink-900/50 border border-ink-700/50 text-xs text-ink-400">
-          <div className="font-semibold text-ink-300 mb-1">Demo Credentials:</div>
-          <div>Admin: admin@cashtrack.com / admin123</div>
-          <div>Member: umer@cashtrack.com / umer123</div>
-        </div>
       </div>
     </div>
   );

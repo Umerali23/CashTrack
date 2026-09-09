@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Eye, Trash2, CheckCircle, Clock, AlertCircle, FileText } from 'lucide-react';
+import { Plus, Eye, Trash2, CheckCircle, Clock, AlertCircle, FileText, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
@@ -26,7 +26,6 @@ export default function Invoices({ ctx, toast }) {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   
-  // ✅ FIXED: Simplified form with single amount field
   const [form, setForm] = useState({ 
     clientId: '', 
     total: '', 
@@ -85,14 +84,29 @@ export default function Invoices({ ctx, toast }) {
     setModalOpen(false);
   };
 
-  const handleGenerateFromTasks = () => {
-    if (!selectedClientId || selectedTaskIds.length === 0) return toast('Select client and tasks', 'error');
-    const invoice = generateInvoiceFromTasks(selectedTaskIds, selectedClientId);
-    if (invoice) {
-      toast(`Invoice ${invoice.invoiceNumber} created`, 'success');
-      setGenerateModalOpen(false); 
-      setSelectedTaskIds([]); 
-      setSelectedClientId('');
+  const handleGenerateFromTasks = async () => {
+    if (!selectedClientId) {
+      toast('Please select a client', 'error');
+      return;
+    }
+    if (selectedTaskIds.length === 0) {
+      toast('Please select at least one task', 'error');
+      return;
+    }
+    
+    try {
+      const invoice = generateInvoiceFromTasks(selectedTaskIds, selectedClientId);
+      if (invoice) {
+        toast(`Invoice ${invoice.invoiceNumber} created from ${selectedTaskIds.length} task(s)`, 'success');
+        setGenerateModalOpen(false); 
+        setSelectedTaskIds([]); 
+        setSelectedClientId('');
+      } else {
+        toast('Failed to generate invoice', 'error');
+      }
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      toast('Error generating invoice', 'error');
     }
   };
 
@@ -103,14 +117,24 @@ export default function Invoices({ ctx, toast }) {
   };
 
   const handleMarkAsPaid = async (id) => {
-    await markInvoiceAsPaid(id);
-    toast('Invoice marked as paid', 'success');
+    try {
+      await markInvoiceAsPaid(id);
+      toast('Invoice marked as paid', 'success');
+    } catch (error) {
+      toast('Error marking invoice as paid', 'error');
+    }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this invoice?')) return;
-    if (deleteInvoice) deleteInvoice(id);
-    toast('Invoice deleted', 'info');
+    if (deleteInvoice) {
+      try {
+        await deleteInvoice(id);
+        toast('Invoice deleted', 'info');
+      } catch (error) {
+        toast('Error deleting invoice', 'error');
+      }
+    }
   };
 
   return (
@@ -219,7 +243,7 @@ export default function Invoices({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create Invoice Modal - SIMPLIFIED (Single Amount Field) */}
+      {/* Create Invoice Modal */}
       {user?.role === 'admin' && (
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Invoice">
           <div className="space-y-4">
@@ -281,7 +305,7 @@ export default function Invoices({ ctx, toast }) {
         </Modal>
       )}
 
-      {/* Generate from Tasks Modal */}
+      {/* Generate from Tasks Modal - FIXED */}
       {user?.role === 'admin' && (
         <Modal open={generateModalOpen} onClose={() => setGenerateModalOpen(false)} title="Generate Invoice from Completed Tasks" size="lg">
           <div className="space-y-4">
@@ -289,7 +313,10 @@ export default function Invoices({ ctx, toast }) {
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Select Client *</label>
               <select 
                 value={selectedClientId} 
-                onChange={(e) => { setSelectedClientId(e.target.value); setSelectedTaskIds([]); }}
+                onChange={(e) => { 
+                  setSelectedClientId(e.target.value); 
+                  setSelectedTaskIds([]); 
+                }}
                 className="input"
               >
                 <option value="">Select Client</option>
@@ -363,7 +390,7 @@ export default function Invoices({ ctx, toast }) {
               <button 
                 onClick={handleGenerateFromTasks}
                 disabled={selectedTaskIds.length === 0}
-                className="btn-primary flex-1 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                className="btn-primary flex-1 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Generate Invoice
               </button>

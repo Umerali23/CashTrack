@@ -3,11 +3,12 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
+const API_URL = 'http://localhost/cashtrack-api/api.php';
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for saved session on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('cashtrack_user');
     if (savedUser) {
@@ -17,35 +18,30 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    // Admin override
-    if (email === 'admin@cashtrack.com' && password === 'admin123') {
-      const adminUser = {
-        id: 'admin',
-        name: 'Admin',
-        role: 'admin',
-        email,
-        avatarColor: 'from-slate-400 to-slate-600'
-      };
-      setUser(adminUser);
-      localStorage.setItem('cashtrack_user', JSON.stringify(adminUser));
-      return { success: true };
-    }
-
-    // Check if user exists in localStorage profiles
-    const savedData = localStorage.getItem('cashtrack_data');
-    if (savedData) {
-      const data = JSON.parse(savedData);
-      const foundUser = data.profiles?.find(p => p.email === email);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'login', email, password })
+      });
+      const result = await response.json();
       
-      if (foundUser) {
-        // For local demo, accept any password
-        setUser(foundUser);
-        localStorage.setItem('cashtrack_user', JSON.stringify(foundUser));
+      if (result.success && result.data) {
+        const userData = {
+          id: result.data.id,
+          name: result.data.name,
+          role: result.data.role,
+          email: result.data.email,
+          avatarColor: result.data.avatar_color
+        };
+        setUser(userData);
+        localStorage.setItem('cashtrack_user', JSON.stringify(userData));
         return { success: true };
       }
+      return { success: false, error: result.error || 'Invalid email or password' };
+    } catch (error) {
+      return { success: false, error: 'Network error' };
     }
-
-    return { success: false, error: 'Invalid credentials' };
   };
 
   const logout = async () => {

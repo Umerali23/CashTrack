@@ -55,6 +55,8 @@ function AppContent() {
         setPage={setPage} 
         user={user}
         onLogout={logout}
+        displayCurrency={ctx.displayCurrency}
+        setDisplayCurrency={ctx.setDisplayCurrency}
       />
       
       {/* Main Content Area - RESPONSIVE PADDING */}

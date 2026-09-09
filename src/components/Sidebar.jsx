@@ -16,11 +16,17 @@ const NAV_ITEMS = [
   { id: 'analytics', label: 'Analytics', icon: TrendingUp, roles: ['admin'] },
 ];
 
-export default function Sidebar({ page, setPage, user, onLogout }) {
+export default function Sidebar({ page, setPage, user, onLogout, displayCurrency, setDisplayCurrency }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const filteredNav = NAV_ITEMS.filter(item => item.roles.includes(user?.role || 'member'));
+  // ✅ FIXED: Check if user is admin, otherwise treat as member
+  const isAdmin = user?.role === 'admin';
+  
+  const filteredNav = NAV_ITEMS.filter(item => {
+    if (isAdmin) return item.roles.includes('admin');
+    return item.roles.includes('member');
+  });
 
   const handleNavClick = (id) => {
     setPage(id);
@@ -28,16 +34,24 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
     setProfileOpen(false);
   };
 
+  const CurrencySelector = () => (
+    <select 
+      value={displayCurrency} 
+      onChange={(e) => setDisplayCurrency(e.target.value)}
+      className="w-full bg-ink-900 border border-ink-700 text-ink-300 text-xs rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+    >
+      <option value="PKR">PKR (Rs)</option>
+      <option value="USD">USD ($)</option>
+      <option value="EUR">EUR (€)</option>
+      <option value="ORIGINAL">Original Currency</option>
+    </select>
+  );
+
   return (
     <>
-      {/* ==========================================
-          MOBILE TOP HEADER (Visible < 1024px)
-         ========================================== */}
+      {/* MOBILE TOP HEADER */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-ink-950/95 backdrop-blur-md border-b border-ink-800 flex items-center justify-between px-4 z-40">
-        <button 
-          onClick={() => setMobileOpen(true)}
-          className="p-2 rounded-lg hover:bg-ink-800 text-ink-300 transition-colors"
-        >
+        <button onClick={() => setMobileOpen(true)} className="p-2 rounded-lg hover:bg-ink-800 text-ink-300 transition-colors">
           <Menu className="h-6 w-6" />
         </button>
         
@@ -46,12 +60,8 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
           CashTrack
         </div>
 
-        {/* Mobile Profile Dropdown */}
         <div className="relative">
-          <button 
-            onClick={() => setProfileOpen(!profileOpen)}
-            className={`h-9 w-9 rounded-lg bg-gradient-to-br ${user?.avatarColor || 'from-slate-400 to-slate-600'} flex items-center justify-center text-white text-xs font-bold shadow-md`}
-          >
+          <button onClick={() => setProfileOpen(!profileOpen)} className={`h-9 w-9 rounded-lg bg-gradient-to-br ${user?.avatarColor || 'from-slate-400 to-slate-600'} flex items-center justify-center text-white text-xs font-bold shadow-md`}>
             {user?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
           </button>
           
@@ -63,10 +73,11 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
                   <div className="text-sm font-bold text-white">{user?.name}</div>
                   <div className="text-xs text-ink-400 capitalize">{user?.role}</div>
                 </div>
-                <button 
-                  onClick={() => { onLogout(); setProfileOpen(false); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:bg-ink-800 flex items-center gap-2 transition-colors"
-                >
+                <div className="px-4 py-3 border-b border-ink-700 mb-1">
+                  <div className="text-xs font-semibold text-ink-300 mb-1">Currency</div>
+                  <CurrencySelector />
+                </div>
+                <button onClick={() => { onLogout(); setProfileOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:bg-ink-800 flex items-center gap-2 transition-colors">
                   <LogOut className="h-4 w-4" /> Sign Out
                 </button>
               </div>
@@ -75,41 +86,24 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
         </div>
       </div>
 
-      {/* ==========================================
-          MOBILE DRAWER OVERLAY
-         ========================================== */}
+      {/* MOBILE DRAWER OVERLAY */}
       {mobileOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* ==========================================
-          MAIN SIDEBAR (Fixed for Desktop & Mobile Drawer)
-         ========================================== */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-ink-950 border-r border-ink-800 
-        transform transition-transform duration-300 ease-in-out 
-        lg:translate-x-0 /* Always visible on desktop */
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} /* Slide in on mobile */
-      `}>
+      {/* MAIN SIDEBAR */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-ink-950 border-r border-ink-800 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo Area (Desktop) */}
+          {/* Logo Area */}
           <div className="h-16 flex items-center px-6 border-b border-ink-800">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">
-              $
-            </div>
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">$</div>
             <span className="ml-3 font-bold text-lg tracking-tight">CashTrack</span>
-            <button 
-              onClick={() => setMobileOpen(false)}
-              className="ml-auto lg:hidden p-1 rounded hover:bg-ink-800 text-ink-400"
-            >
+            <button onClick={() => setMobileOpen(false)} className="ml-auto lg:hidden p-1 rounded hover:bg-ink-800 text-ink-400">
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          {/* Navigation Links */}
+          {/* ✅ Navigation Menu - This was missing before */}
           <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
             {filteredNav.map((item) => {
               const Icon = item.icon;
@@ -131,9 +125,10 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
             })}
           </nav>
 
-          {/* Desktop User Profile & Logout */}
-          <div className="p-4 border-t border-ink-800 hidden lg:block">
-            <div className="flex items-center gap-3 mb-3">
+          {/* Bottom Section: Currency, Profile, Logout */}
+          <div className="p-4 border-t border-ink-800 space-y-3">
+            <CurrencySelector />
+            <div className="flex items-center gap-3">
               <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${user?.avatarColor || 'from-slate-400 to-slate-600'} flex items-center justify-center text-white font-bold shadow-md`}>
                 {user?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
               </div>
@@ -142,10 +137,7 @@ export default function Sidebar({ page, setPage, user, onLogout }) {
                 <div className="text-xs text-ink-400 capitalize truncate">{user?.role}</div>
               </div>
             </div>
-            <button 
-              onClick={onLogout}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
-            >
+            <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-colors">
               <LogOut className="h-4 w-4" /> Sign Out
             </button>
           </div>
