@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, Calendar, User, Briefcase, Tag, Flag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
-import EmptyState from '../components/EmptyState';
 
 const STATUS_CONFIG = {
   'pending': { label: 'Pending', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', icon: Clock },
@@ -20,7 +19,7 @@ const PRIORITY_CONFIG = {
 export default function Tasks({ ctx, toast }) {
   const { user } = useAuth();
   
-  // Extract data and functions from context
+  // Safe data extraction
   const tasks = ctx.data?.tasks || [];
   const clients = ctx.data?.clients || [];
   const profiles = ctx.data?.profiles || [];
@@ -43,11 +42,12 @@ export default function Tasks({ ctx, toast }) {
 
   // Filter tasks based on user role
   const visibleTasks = useMemo(() => {
-    if (user?.role === 'admin') return tasks;
+    if (!user) return [];
+    if (user.role === 'admin') return tasks;
     return tasks.filter(t => t.assigneeId === user.id);
   }, [tasks, user]);
 
-  // Get only team members (not admins) for task assignment
+  // Get team members (non-admins)
   const teamMembers = useMemo(() => {
     return profiles.filter(p => p.role !== 'admin');
   }, [profiles]);
@@ -72,11 +72,11 @@ export default function Tasks({ ctx, toast }) {
   const openEdit = (task) => {
     setEditingTask(task);
     setForm({
-      title: task.title,
+      title: task.title || '',
       description: task.description || '',
       clientId: task.clientId || '',
       assigneeId: task.assigneeId || '',
-      compensation: task.compensation || '',
+      compensation: task.compensation?.toString() || '',
       dueDate: task.dueDate || '',
       status: task.status || 'pending',
       priority: task.priority || 'medium',
@@ -87,9 +87,18 @@ export default function Tasks({ ctx, toast }) {
   };
 
   const handleSave = async () => {
-    if (!form.title.trim()) return toast('Task title is required', 'error');
-    if (!form.clientId) return toast('Please select a client', 'error');
-    if (!form.assigneeId) return toast('Please assign to a team member', 'error');
+    if (!form.title.trim()) {
+      toast('Task title is required', 'error');
+      return;
+    }
+    if (!form.clientId) {
+      toast('Please select a client', 'error');
+      return;
+    }
+    if (!form.assigneeId) {
+      toast('Please assign to a team member', 'error');
+      return;
+    }
     
     try {
       const taskData = {
@@ -110,12 +119,12 @@ export default function Tasks({ ctx, toast }) {
         toast('Task updated successfully', 'success');
       } else {
         await addTask(taskData);
-        toast('Task created and assigned', 'success');
+        toast('Task created successfully', 'success');
       }
       setModalOpen(false);
     } catch (error) {
       console.error('Error saving task:', error);
-      toast('Failed to save task', 'error');
+      toast('Failed to save task: ' + error.message, 'error');
     }
   };
 
@@ -125,15 +134,15 @@ export default function Tasks({ ctx, toast }) {
       toast(`Task marked as ${newStatus}`, 'success');
     } catch (error) {
       console.error('Error updating status:', error);
-      toast('Failed to update task status', 'error');
+      toast('Failed to update task', 'error');
     }
   };
 
   const handleDelete = async (task) => {
-    if (!window.confirm(`Are you sure you want to delete "${task.title}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete task "${task.title}"?`)) return;
     try {
       await deleteTask(task.id);
-      toast('Task deleted successfully', 'info');
+      toast('Task deleted', 'info');
     } catch (error) {
       console.error('Error deleting task:', error);
       toast('Failed to delete task', 'error');
@@ -153,68 +162,104 @@ export default function Tasks({ ctx, toast }) {
           </p>
         </div>
         {user?.role === 'admin' && (
-          <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10">
+          <button 
+            onClick={openNew} 
+            className="btn-primary bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.02] shadow-lg shadow-white/10"
+          >
             <Plus className="h-4 w-4" strokeWidth={2.5} /> New Task
           </button>
         )}
       </div>
 
-      {/* Task Grid */}
-      {visibleTasks.length === 0 ? (
-        <EmptyState 
-          title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"} 
-          description={user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now. Check back later!"} 
-          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> New Task</button> : null} 
-        />
-      ) : (
+      {/* Empty State */}
+      {visibleTasks.length === 0 && (
+        <div className="text-center py-16">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-ink-800 mb-4">
+            <Briefcase className="h-8 w-8 text-ink-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-ink-200 mb-1">
+            {user?.role === 'admin' ? 'No tasks yet' : 'No tasks assigned'}
+          </h3>
+          <p className="text-ink-400 text-sm mb-4">
+            {user?.role === 'admin' 
+              ? 'Create your first task to get started.' 
+              : 'You have no active tasks right now.'}
+          </p>
+          {user?.role === 'admin' && (
+            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
+              <Plus className="h-4 w-4" /> Create Task
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Tasks Grid */}
+      {visibleTasks.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleTasks.map((task) => {
-            const StatusIcon = STATUS_CONFIG[task.status]?.icon || Clock;
+          {visibleTasks.map((task, index) => {
+            // Safe data access with defaults
+            const status = task.status || 'pending';
+            const priority = task.priority || 'medium';
+            const title = task.title || 'Untitled Task';
+            const description = task.description || 'No description';
+            const compensation = task.compensation || 0;
+            const currency = task.currency || 'USD';
+            const dueDate = task.dueDate;
+            
+            const StatusIcon = STATUS_CONFIG[status]?.icon || Clock;
+            const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+            const priorityConfig = PRIORITY_CONFIG[priority] || PRIORITY_CONFIG.medium;
+            
+            // Find related data safely
             const client = clients.find(c => c.id === task.clientId);
             const assignee = profiles.find(p => p.id === task.assigneeId);
-            const priorityConfig = PRIORITY_CONFIG[task.priority || 'medium'];
+            
+            // Parse tags safely
+            let tagsArray = [];
+            if (task.tags) {
+              tagsArray = Array.isArray(task.tags) ? task.tags : task.tags.split(',').map(t => t.trim());
+            }
 
             return (
-              <div key={task.id} className="glass rounded-2xl p-5 hover:border-ink-500 transition-all duration-300 flex flex-col h-full">
-                {/* Top Row: Status & Priority Badges */}
+              <div 
+                key={task.id || index} 
+                className="glass rounded-2xl p-5 hover:border-ink-500 transition-all duration-300 flex flex-col"
+              >
+                {/* Header: Status & Actions */}
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex gap-2 flex-wrap">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_CONFIG[task.status]?.color}`}>
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${statusConfig.color}`}>
                       <StatusIcon className="h-3 w-3" />
-                      {STATUS_CONFIG[task.status]?.label}
+                      {statusConfig.label}
                     </span>
-                    {priorityConfig && (
-                      <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase flex items-center gap-1 ${priorityConfig.color}`}>
-                        {priorityConfig.icon && <priorityConfig.icon className="h-2.5 w-2.5" />}
-                        {priorityConfig.label}
-                      </span>
-                    )}
+                    <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase ${priorityConfig.color}`}>
+                      {priorityConfig.label}
+                    </span>
                   </div>
                   
-                  {/* Action Buttons */}
                   <div className="flex gap-1">
                     {user?.role === 'admin' && (
                       <>
                         <button 
                           onClick={() => openEdit(task)} 
-                          className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white cursor-pointer transition-colors"
-                          title="Edit task"
+                          className="p-1.5 rounded-lg hover:bg-ink-700/50 text-ink-400 hover:text-white transition-colors"
+                          title="Edit"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button 
                           onClick={() => handleDelete(task)}
-                          className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400 cursor-pointer transition-colors"
-                          title="Delete task"
+                          className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400 transition-colors"
+                          title="Delete"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </>
                     )}
-                    {user?.role !== 'admin' && task.status !== 'completed' && (
+                    {user?.role !== 'admin' && status !== 'completed' && (
                       <button 
                         onClick={() => handleStatusChange(task, 'completed')}
-                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded-md cursor-pointer transition-colors"
+                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded-md transition-colors"
                       >
                         Mark Done
                       </button>
@@ -223,31 +268,36 @@ export default function Tasks({ ctx, toast }) {
                 </div>
 
                 {/* Task Content */}
-                <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={task.title}>
-                  {task.title}
+                <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={title}>
+                  {title}
                 </h3>
                 <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow">
-                  {task.description || 'No description provided.'}
+                  {description}
                 </p>
 
                 {/* Tags */}
-                {task.tags && task.tags.length > 0 && (
+                {tagsArray.length > 0 && tagsArray[0] && (
                   <div className="flex flex-wrap gap-1 mb-3">
-                    {task.tags.map((tag, index) => (
-                      <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20">
-                        <Tag className="h-2.5 w-2.5" />
-                        {tag}
-                      </span>
+                    {tagsArray.map((tag, tagIndex) => (
+                      tag && (
+                        <span 
+                          key={tagIndex} 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20"
+                        >
+                          <Tag className="h-2.5 w-2.5" />
+                          {tag}
+                        </span>
+                      )
                     ))}
                   </div>
                 )}
 
-                {/* Meta Data */}
+                {/* Meta Info */}
                 <div className="space-y-2 pt-3 border-t border-ink-600/50 text-xs">
                   {client && (
                     <div className="flex items-center gap-2 text-ink-300">
                       <Briefcase className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
-                      <span className="truncate" title={client.name}>{client.name}</span>
+                      <span className="truncate">{client.name}</span>
                     </div>
                   )}
                   {assignee && (
@@ -256,14 +306,14 @@ export default function Tasks({ ctx, toast }) {
                       <span>{assignee.name}</span>
                     </div>
                   )}
-                  {task.dueDate && (
+                  {dueDate && (
                     <div className="flex items-center gap-2 text-ink-300">
                       <Calendar className="h-3.5 w-3.5 text-ink-500 flex-shrink-0" />
-                      <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                      <span>Due: {new Date(dueDate).toLocaleDateString()}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-emerald-400 font-bold pt-1">
-                    ${task.compensation} {task.currency}
+                    ${compensation} {currency}
                   </div>
                 </div>
               </div>
@@ -272,7 +322,7 @@ export default function Tasks({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create/Edit Modal (Admin Only) */}
+      {/* Create/Edit Modal */}
       {user?.role === 'admin' && (
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
           <div className="space-y-4">
@@ -293,46 +343,34 @@ export default function Tasks({ ctx, toast }) {
                 value={form.description} 
                 onChange={(e) => setForm({...form, description: e.target.value})} 
                 className="input h-20 resize-none" 
-                placeholder="Task details, requirements, etc..." 
+                placeholder="Task details..." 
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
-                {clients.length === 0 && (
-                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                    ⚠️ No clients found. Add a client first.
-                  </div>
-                )}
                 <select 
                   value={form.clientId} 
                   onChange={(e) => setForm({...form, clientId: e.target.value})} 
                   className="input"
-                  disabled={clients.length === 0}
                 >
                   <option value="">Select Client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
-                {teamMembers.length === 0 && (
-                  <div className="text-xs text-amber-400 mb-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                    ⚠️ No team members. Add a member first.
-                  </div>
-                )}
                 <select 
                   value={form.assigneeId} 
                   onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
                   className="input"
-                  disabled={teamMembers.length === 0}
                 >
                   <option value="">Select Member</option>
                   {teamMembers.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.role})
-                    </option>
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
               </div>
@@ -341,7 +379,11 @@ export default function Tasks({ ctx, toast }) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Priority</label>
-                <select value={form.priority} onChange={(e) => setForm({...form, priority: e.target.value})} className="input">
+                <select 
+                  value={form.priority} 
+                  onChange={(e) => setForm({...form, priority: e.target.value})} 
+                  className="input"
+                >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -349,13 +391,13 @@ export default function Tasks({ ctx, toast }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Tags (comma separated)</label>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Tags</label>
                 <input 
                   type="text" 
                   value={form.tags} 
                   onChange={(e) => setForm({...form, tags: e.target.value})} 
                   className="input" 
-                  placeholder="Design, Frontend, React" 
+                  placeholder="Design, React" 
                 />
               </div>
             </div>
@@ -387,14 +429,13 @@ export default function Tasks({ ctx, toast }) {
             <div className="flex gap-2 pt-2">
               <button 
                 onClick={() => setModalOpen(false)} 
-                className="btn-ghost flex-1 border border-ink-600 hover:bg-ink-800/50"
+                className="btn-ghost flex-1 border border-ink-600"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleSave} 
-                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed" 
-                disabled={!form.title || !form.clientId || !form.assigneeId}
+                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100"
               >
                 {editingTask ? 'Save Changes' : 'Create Task'}
               </button>

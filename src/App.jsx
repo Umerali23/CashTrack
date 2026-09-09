@@ -15,7 +15,7 @@ import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
   const { user, logout, loading: authLoading } = useAuth();
-  const ctx = useCashTrack(user);
+  const ctx = useCashTrack(); // No user parameter needed anymore
   
   const [page, setPage] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
@@ -43,13 +43,11 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen ${ctx.theme === 'dark' ? 'bg-ink-950 text-ink-100' : 'bg-zinc-50 text-zinc-900'} relative`}>
-      {/* Background Effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="blob bg-emerald-500/20 top-[-10%] left-[-10%] h-[500px] w-[500px]" />
         <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
       </div>
       
-      {/* Sidebar (Handles both Desktop and Mobile) */}
       <Sidebar 
         page={page} 
         setPage={setPage} 
@@ -59,13 +57,12 @@ function AppContent() {
         setDisplayCurrency={ctx.setDisplayCurrency}
       />
       
-      {/* Main Content Area - RESPONSIVE PADDING */}
       <main className="
         w-full 
-        pt-20 lg:pt-8 /* Top padding for mobile header, less for desktop */
-        px-4 sm:px-6 lg:px-10 /* Horizontal padding scales with screen */
-        pb-24 lg:pb-8 /* Bottom padding for mobile nav if needed */
-        lg:pl-72 /* Pushes content right on desktop to clear the fixed sidebar */
+        pt-20 lg:pt-8
+        px-4 sm:px-6 lg:px-10
+        pb-24 lg:pb-8
+        lg:pl-72
         transition-all duration-300
       ">
         <div className="max-w-7xl mx-auto animate-fade-in">

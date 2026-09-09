@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import Modal from '../components/Modal'; 
+import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { formatCurrency } from '../lib/currency';
 
@@ -15,13 +15,21 @@ const AVATAR_GRADIENTS = [
 
 const EMPTY_FORM = { name: '', role: '', avatarColor: AVATAR_GRADIENTS[0] };
 
-const generateCredentials = (name) => {
+// Generate secure random password
+const generatePassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
+// Generate email from name
+const generateEmail = (name) => {
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
   const randomNum = Math.floor(Math.random() * 9000) + 1000;
-  return {
-    email: `${cleanName}${randomNum}@cashtrack.com`,
-    password: `Cash${randomNum}!`
-  };
+  return `${cleanName}${randomNum}@cashtrack.com`;
 };
 
 export default function Team({ ctx, toast }) {
@@ -29,27 +37,21 @@ export default function Team({ ctx, toast }) {
   const { data, displayCurrency, toDisplay, updateTeamMember, deleteTeamMember, addTeamMember } = ctx;
   const currency = displayCurrency === 'ORIGINAL' ? 'PKR' : displayCurrency;
   const team = data?.profiles?.filter(p => p.role !== 'admin') || [];
-  const tasks = data?.tasks || [];
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [generatedCreds, setGeneratedCreds] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
-  const [showPassword, setShowPassword] = useState({});
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIXED: Calculate earnings from completed tasks, not transactions
   const memberStats = useMemo(() => {
     return team.map((m) => {
-      // Find all completed tasks assigned to this member
-      const completedTasks = tasks.filter(t => 
-        t.assigneeId === m.id && 
-        t.status === 'completed'
+      const completedTasks = (data.tasks || []).filter(t => 
+        t.assigneeId === m.id && t.status === 'completed'
       );
-      
-      // Calculate total earnings from completed tasks
       const earnings = completedTasks.reduce((sum, t) => {
         return sum + toDisplay(parseFloat(t.compensation) || 0, t.currency || 'USD');
       }, 0);
@@ -60,13 +62,14 @@ export default function Team({ ctx, toast }) {
         completedTasksCount: completedTasks.length
       };
     });
-  }, [team, tasks, toDisplay]);
+  }, [team, data.tasks, toDisplay]);
 
   const openNew = () => {
     setEditing(null);
     setForm({ ...EMPTY_FORM, avatarColor: AVATAR_GRADIENTS[Math.floor(Math.random() * AVATAR_GRADIENTS.length)] });
     setGeneratedCreds(null);
     setErrors({});
+    setShowPassword(false);
     setModalOpen(true);
   };
 
@@ -96,11 +99,13 @@ export default function Team({ ctx, toast }) {
         toast('Team member updated', 'success');
         setModalOpen(false);
       } else {
-        const creds = generateCredentials(form.name);
+        // Generate credentials BEFORE creating user
+        const password = generatePassword();
+        const email = generateEmail(form.name);
         
         const result = await addTeamMember({
-          email: creds.email,
-          password: creds.password,
+          email: email,
+          password: password,
           name: form.name,
           role: form.role,
           avatarColor: form.avatarColor
@@ -108,7 +113,11 @@ export default function Team({ ctx, toast }) {
 
         if (result.success) {
           toast('Team member created successfully!', 'success');
-          setGeneratedCreds(creds);
+          // Show credentials to admin
+          setGeneratedCreds({
+            email: email,
+            password: password
+          });
         } else {
           throw new Error(result.error || 'Failed to create member');
         }
@@ -123,8 +132,12 @@ export default function Team({ ctx, toast }) {
 
   const handleDelete = async (m) => {
     if (!window.confirm(`Remove "${m.name}" from the team?`)) return;
-    await deleteTeamMember(m.id);
-    toast('Team member removed', 'info');
+    try {
+      await deleteTeamMember(m.id);
+      toast('Team member removed', 'info');
+    } catch (error) {
+      toast('Failed to remove team member', 'error');
+    }
   };
 
   const copyToClipboard = (text, field, memberId) => {
@@ -173,8 +186,7 @@ export default function Team({ ctx, toast }) {
 
                 {member.email && (
                   <div className="mb-4 p-3 rounded-xl bg-ink-900/60 border border-ink-600/50 space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Login Credentials</div>
-                    
+                    <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Login Email</div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-ink-300 truncate mr-2 flex-1">{member.email}</span>
                       <button onClick={() => copyToClipboard(member.email, 'email', member.id)} className="text-ink-300 hover:text-white cursor-pointer flex-shrink-0 ml-1">
@@ -202,55 +214,101 @@ export default function Team({ ctx, toast }) {
               <h3 className="text-sm font-bold text-emerald-400 mb-2">✅ Member Created Successfully!</h3>
               <p className="text-xs text-ink-300 mb-3">Share these credentials with the team member:</p>
               
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center bg-ink-900/50 p-2 rounded-lg">
-                  <span className="text-ink-300 truncate mr-2">{generatedCreds.email}</span>
-                  <button onClick={() => copyToClipboard(generatedCreds.email, 'modal-email', 'temp')} className="text-emerald-400 cursor-pointer flex-shrink-0">
-                    {copiedField === 'modal-email-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </button>
+              <div className="space-y-3 text-sm">
+                <div className="bg-ink-950/50 p-3 rounded-lg border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Email Address</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-200 font-mono text-xs">{generatedCreds.email}</span>
+                    <button onClick={() => copyToClipboard(generatedCreds.email, 'modal-email', 'temp')} className="text-emerald-400 hover:text-emerald-300 cursor-pointer flex-shrink-0 ml-2">
+                      {copiedField === 'modal-email-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center bg-ink-900/50 p-2 rounded-lg">
-                  <span className="text-ink-300 font-mono truncate mr-2">{generatedCreds.password}</span>
-                  <button onClick={() => copyToClipboard(generatedCreds.password, 'modal-pass', 'temp')} className="text-emerald-400 cursor-pointer flex-shrink-0">
-                    {copiedField === 'modal-pass-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </button>
+
+                <div className="bg-ink-950/50 p-3 rounded-lg border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Temporary Password</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-200 font-mono text-xs">
+                      {showPassword ? generatedCreds.password : '••••••••••••'}
+                    </span>
+                    <div className="flex gap-2 flex-shrink-0 ml-2">
+                      <button onClick={() => setShowPassword(!showPassword)} className="text-ink-400 hover:text-ink-300 cursor-pointer">
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                      <button onClick={() => copyToClipboard(generatedCreds.password, 'modal-pass', 'temp')} className="text-emerald-400 hover:text-emerald-300 cursor-pointer">
+                        {copiedField === 'modal-pass-temp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <p className="text-[10px] text-ink-400 mt-2">️ Save these credentials securely!</p>
+
+              <div className="mt-3 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                <p className="text-[10px] text-amber-400">⚠️ Save these credentials securely! The password cannot be retrieved again.</p>
+              </div>
             </div>
           )}
 
-          <div>
-            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Full Name</label>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={`input ${errors.name ? 'border-rose-500/60' : ''}`} placeholder="John Doe" />
-            {errors.name && <div className="text-xs text-rose-400 mt-1">{errors.name}</div>}
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Role</label>
-            <input type="text" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={`input ${errors.role ? 'border-rose-500/60' : ''}`} placeholder="UI/UX Designer" />
-            {errors.role && <div className="text-xs text-rose-400 mt-1">{errors.role}</div>}
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Avatar Color</label>
-            <div className="flex flex-wrap gap-2">
-              {AVATAR_GRADIENTS.map((g) => (
-                <button key={g} type="button" onClick={() => setForm({ ...form, avatarColor: g })} className={`h-9 w-9 rounded-xl bg-gradient-to-br ${g} transition-all cursor-pointer ${form.avatarColor === g ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`} />
-              ))}
-            </div>
-          </div>
-          
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600" disabled={loading}>
-              {generatedCreds ? 'Close' : 'Cancel'}
-            </button>
-            {!generatedCreds && (
-              <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01] disabled:opacity-50" disabled={loading}>
-                {loading ? 'Creating...' : (editing ? 'Save Changes' : 'Add Member')}
-              </button>
-            )}
-          </div>
+          {!generatedCreds && (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Full Name *</label>
+                <input 
+                  type="text" 
+                  value={form.name} 
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} 
+                  className={`input ${errors.name ? 'border-rose-500/60' : ''}`} 
+                  placeholder="John Doe" 
+                />
+                {errors.name && <div className="text-xs text-rose-400 mt-1">{errors.name}</div>}
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Role *</label>
+                <input 
+                  type="text" 
+                  value={form.role} 
+                  onChange={(e) => setForm({ ...form, role: e.target.value })} 
+                  className={`input ${errors.role ? 'border-rose-500/60' : ''}`} 
+                  placeholder="UI/UX Designer" 
+                />
+                {errors.role && <div className="text-xs text-rose-400 mt-1">{errors.role}</div>}
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Avatar Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {AVATAR_GRADIENTS.map((g) => (
+                    <button 
+                      key={g} 
+                      type="button" 
+                      onClick={() => setForm({ ...form, avatarColor: g })} 
+                      className={`h-9 w-9 rounded-xl bg-gradient-to-br ${g} transition-all cursor-pointer ${
+                        form.avatarColor === g ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'
+                      }`} 
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => setModalOpen(false)} 
+                  className="btn-ghost flex-1 border border-ink-600" 
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSave} 
+                  className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100 hover:scale-[1.01] disabled:opacity-50" 
+                  disabled={loading}
+                >
+                  {loading ? 'Creating...' : (editing ? 'Save Changes' : 'Add Member')}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </div>
