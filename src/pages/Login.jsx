@@ -33,7 +33,7 @@ export default function Login() {
           <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
             <span className="text-2xl font-bold text-white">$</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Welcome to CashTrack</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Welcome to CashTrack</h1>
           <p className="text-ink-400 text-sm mt-1">Sign in to your dashboard</p>
         </div>
 
