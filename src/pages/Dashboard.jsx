@@ -1,31 +1,13 @@
 import { useMemo } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Users, Briefcase, CheckCircle, Clock } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { DollarSign, TrendingUp, TrendingDown, Users, Briefcase, CheckCircle } from 'lucide-react';
 import { formatCurrency } from '../lib/currency';
 
 export default function Dashboard({ ctx, user }) {
-  const { data, aggregates, memberEarnings, displayCurrency } = ctx;
-  const currency = displayCurrency === 'ORIGINAL' ? 'USD' : displayCurrency;
-
+  const { data, aggregates } = ctx;
   const tasks = data?.tasks || [];
-  const transactions = data?.transactions || [];
   const clients = data?.clients || [];
   const profiles = data?.profiles || [];
-
-  // ✅ FIXED: Calculate team stats directly from tasks for real-time updates
-  const teamStats = useMemo(() => {
-    return profiles
-      .filter(p => p.role !== 'admin')
-      .map(member => {
-        const memberTasks = tasks.filter(t => t.assigneeId === member.id);
-        const completed = memberTasks.filter(t => t.status === 'completed').length;
-        const pending = memberTasks.filter(t => t.status !== 'completed').length;
-        const earnings = memberTasks
-          .filter(t => t.status === 'completed')
-          .reduce((sum, t) => sum + (parseFloat(t.compensation) || 0), 0);
-        return { ...member, completed, pending, earnings };
-      });
-  }, [profiles, tasks]);
+  const invoices = data?.invoices || [];
 
   const stats = useMemo(() => {
     const totalRevenue = aggregates?.income || 0;
@@ -35,292 +17,124 @@ export default function Dashboard({ ctx, user }) {
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const totalClients = clients.length;
     const totalMembers = profiles.filter(p => p.role !== 'admin').length;
-    const pendingInvoices = (data?.invoices || []).filter(i => i.status === 'draft' || i.status === 'sent').length;
-    return { totalRevenue, totalExpenses, netProfit, activeTasks, completedTasks, totalClients, totalMembers, pendingInvoices };
-  }, [aggregates, tasks, clients, profiles, data?.invoices]);
+    const pendingInvoices = invoices.filter(i => i.status === 'draft' || i.status === 'sent').length;
 
-  const myStats = useMemo(() => {
-    if (user?.role !== 'member') return null;
-    const myTasks = tasks.filter(t => t.assigneeId === user.id);
     return {
-      myCompleted: myTasks.filter(t => t.status === 'completed').length,
-      myPending: myTasks.filter(t => t.status !== 'completed').length,
-      myTotal: myTasks.length,
-      myEarnings: memberEarnings?.total || 0
+      totalRevenue,
+      totalExpenses,
+      netProfit,
+      activeTasks,
+      completedTasks,
+      totalClients,
+      totalMembers,
+      pendingInvoices
     };
-  }, [tasks, memberEarnings, user]);
-
-  const recentTransactions = useMemo(() => {
-    return [...transactions]
-      .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
-      .slice(0, 5);
-  }, [transactions]);
-
-  const upcomingTasks = useMemo(() => {
-    const tasksToFilter = user?.role === 'member' 
-      ? tasks.filter(t => t.assigneeId === user.id)
-      : tasks;
-    
-    return [...tasksToFilter]
-      .filter(t => t.status !== 'completed' && t.dueDate)
-      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-      .slice(0, 5);
-  }, [tasks, user]);
+  }, [aggregates, tasks, clients, profiles, invoices]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            Welcome back, {user?.name || 'Admin'}
-          </h1>
-          <p className="text-ink-400 text-sm mt-1">
-            {user?.role === 'admin' 
-              ? "Here's what's happening with your business today."
-              : "Here's your personal performance overview."}
-          </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-[var(--text-primary)]">
+          Welcome back, {user?.name || 'Admin'}
+        </h1>
+        <p className="text-[var(--text-muted)] mt-1">
+          Here's what's happening with your dashboard today.
+        </p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-emerald-500" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-[var(--text-primary)]">
+            {formatCurrency(stats.totalRevenue, 'USD', true)}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">Total Revenue</div>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+              <Briefcase className="h-5 w-5 text-blue-500" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-[var(--text-primary)]">
+            {stats.activeTasks}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">Active Tasks</div>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-violet-500" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-[var(--text-primary)]">
+            {stats.totalMembers}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">Team Members</div>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <CheckCircle className="h-5 w-5 text-amber-500" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-[var(--text-primary)]">
+            {stats.completedTasks}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">Completed Tasks</div>
         </div>
       </div>
 
-      {/* Admin Stats Grid */}
-      {user?.role === 'admin' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {formatCurrency(stats.totalRevenue, currency, true)}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Total Revenue</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center">
-                <TrendingDown className="h-5 w-5 text-rose-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {formatCurrency(stats.totalExpenses, currency, true)}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Total Expenses</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-violet-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {formatCurrency(stats.netProfit, currency, true)}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Net Profit</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <Briefcase className="h-5 w-5 text-blue-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {stats.activeTasks}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Active Tasks</div>
-          </div>
-        </div>
-      )}
-
-      {/* Member Stats Grid */}
-      {user?.role === 'member' && myStats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight text-emerald-400">
-              {formatCurrency(myStats.myEarnings, currency, true)}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">My Earnings</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-blue-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {myStats.myCompleted}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Completed Tasks</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-amber-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {myStats.myPending}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Pending Tasks</div>
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
-                <Briefcase className="h-5 w-5 text-violet-400" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {myStats.myTotal}
-            </div>
-            <div className="text-xs text-ink-400 mt-1">Total Tasks</div>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Stats Row (Admin Only) */}
-      {user?.role === 'admin' && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <Briefcase className="h-5 w-5 text-blue-400" />
-            <div>
-              <div className="text-lg font-bold">{stats.activeTasks}</div>
-              <div className="text-xs text-ink-400">Active Tasks</div>
-            </div>
-          </div>
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <Users className="h-5 w-5 text-emerald-400" />
-            <div>
-              <div className="text-lg font-bold">{stats.totalMembers}</div>
-              <div className="text-xs text-ink-400">Team Members</div>
-            </div>
-          </div>
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <Users className="h-5 w-5 text-violet-400" />
-            <div>
-              <div className="text-lg font-bold">{stats.totalClients}</div>
-              <div className="text-xs text-ink-400">Clients</div>
-            </div>
-          </div>
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-amber-400" />
-            <div>
-              <div className="text-lg font-bold">{stats.pendingInvoices}</div>
-              <div className="text-xs text-ink-400">Pending Invoices</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Team Status Section (Admin Only) - FIXED */}
-      {user?.role === 'admin' && (
-        <div className="glass rounded-2xl p-6">
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <Users className="h-5 w-5 text-violet-400" /> Team Status
-          </h3>
-          {teamStats.length === 0 ? (
-            <div className="text-center py-8 text-ink-400 text-sm">No team members yet.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {teamStats.map(member => (
-                <div key={member.id} className="p-4 rounded-xl bg-ink-900/40 border border-ink-600/50 flex items-center justify-between hover:bg-ink-900/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-white font-bold`}>
-                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm">{member.name}</div>
-                      <div className="text-xs text-ink-400">{member.role}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-bold text-emerald-400">{formatCurrency(member.earnings, currency, true)}</div>
-                    <div className="text-xs text-ink-400">{member.completed} done • {member.pending} pending</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Two Column Layout */}
+      {/* Recent Activity Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Transactions (Admin Only) */}
-        {user?.role === 'admin' && (
-          <div className="glass rounded-2xl p-5">
-            <h3 className="font-bold text-lg mb-4">Recent Transactions</h3>
-            {recentTransactions.length === 0 ? (
-              <div className="text-center py-8 text-ink-400 text-sm">No transactions yet</div>
-            ) : (
-              <div className="space-y-3">
-                {recentTransactions.map((tx) => {
-                  const client = clients.find(c => c.id === tx.clientId);
-                  return (
-                    <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-ink-900/40 hover:bg-ink-900/60 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${tx.type === 'income' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                          {tx.type === 'income' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium">{tx.description || tx.category || 'Transaction'}</div>
-                          <div className="text-xs text-ink-400">{client?.name || 'Unknown Client'}</div>
-                        </div>
-                      </div>
-                      <div className={`text-sm font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount, tx.currency || 'USD', true)}
-                      </div>
-                    </div>
-                  );
-                })}
+        <div className="glass rounded-2xl p-6">
+          <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Recent Tasks</h3>
+          {tasks.slice(0, 5).map((task) => (
+            <div key={task.id} className="flex items-center justify-between py-3 border-b border-[var(--border-color)] last:border-0">
+              <div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{task.title}</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {clients.find(c => c.id === task.clientId)?.name || 'Unknown Client'}
+                </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Upcoming Tasks */}
-        <div className={`glass rounded-2xl p-5 ${user?.role === 'member' ? 'lg:col-span-2' : ''}`}>
-          <h3 className="font-bold text-lg mb-4">
-            {user?.role === 'member' ? 'My Upcoming Tasks' : 'Upcoming Tasks'}
-          </h3>
-          {upcomingTasks.length === 0 ? (
-            <div className="text-center py-8 text-ink-400 text-sm">No upcoming tasks</div>
-          ) : (
-            <div className="space-y-3">
-              {upcomingTasks.map((task) => {
-                const assignee = profiles.find(p => p.id === task.assigneeId);
-                const client = clients.find(c => c.id === task.clientId);
-                return (
-                  <div key={task.id} className="flex items-center justify-between p-3 rounded-xl bg-ink-900/40 hover:bg-ink-900/60 transition-colors">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                        <Briefcase className="h-4 w-4 text-blue-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">{task.title}</div>
-                        <div className="text-xs text-ink-400 truncate">
-                          {client?.name}{assignee && user?.role === 'admin' ? ` • ${assignee.name}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-xs text-ink-400 flex-shrink-0 ml-2">
-                      {new Date(task.dueDate).toLocaleDateString()}
-                    </div>
-                  </div>
-                );
-              })}
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                task.status === 'completed' 
+                  ? 'bg-emerald-500/10 text-emerald-500' 
+                  : 'bg-amber-500/10 text-amber-500'
+              }`}>
+                {task.status}
+              </span>
             </div>
+          ))}
+          {tasks.length === 0 && (
+            <div className="text-center py-8 text-[var(--text-muted)]">No tasks yet</div>
           )}
+        </div>
+
+        <div className="glass rounded-2xl p-6">
+          <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Quick Stats</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-input)]">
+              <span className="text-sm text-[var(--text-secondary)]">Total Clients</span>
+              <span className="text-lg font-bold text-[var(--text-primary)]">{stats.totalClients}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-input)]">
+              <span className="text-sm text-[var(--text-secondary)]">Pending Invoices</span>
+              <span className="text-lg font-bold text-[var(--text-primary)]">{stats.pendingInvoices}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-input)]">
+              <span className="text-sm text-[var(--text-secondary)]">Net Profit</span>
+              <span className="text-lg font-bold text-emerald-500">{formatCurrency(stats.netProfit, 'USD', true)}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
