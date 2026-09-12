@@ -24,7 +24,7 @@ export default function Transactions({ ctx, toast }) {
     assigneeId: '', 
     category: 'Freelance Work', 
     date: new Date().toISOString().split('T')[0], 
-    currency: 'USD' 
+    currency: 'USD' // ✅ Default currency
   });
   
   const [expenseForm, setExpenseForm] = useState({ 
@@ -32,7 +32,7 @@ export default function Transactions({ ctx, toast }) {
     description: '', 
     category: 'Software Subscription', 
     date: new Date().toISOString().split('T')[0], 
-    currency: 'USD' 
+    currency: 'USD' // ✅ Default currency
   });
 
   const incomeTransactions = useMemo(() => transactions.filter(t => t.type === 'income'), [transactions]);
@@ -74,7 +74,6 @@ export default function Transactions({ ctx, toast }) {
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="glass rounded-2xl p-5">
           <div className="flex items-center gap-3 mb-2">
@@ -100,11 +99,8 @@ export default function Transactions({ ctx, toast }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Income Section */}
         <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-emerald-400" /> Income
-          </h3>
+          <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-emerald-400" /> Income</h3>
           {incomeTransactions.length === 0 ? (
             <EmptyState title="No income yet" description="Add your first income transaction." />
           ) : (
@@ -130,11 +126,8 @@ export default function Transactions({ ctx, toast }) {
           )}
         </div>
 
-        {/* Expense Section */}
         <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <TrendingDown className="h-5 w-5 text-rose-400" /> Expenses
-          </h3>
+          <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><TrendingDown className="h-5 w-5 text-rose-400" /> Expenses</h3>
           {expenseTransactions.length === 0 ? (
             <EmptyState title="No expenses yet" description="Add your first expense." />
           ) : (
@@ -162,6 +155,13 @@ export default function Transactions({ ctx, toast }) {
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Amount *</label>
             <input type="number" value={incomeForm.amount} onChange={(e) => setIncomeForm({...incomeForm, amount: e.target.value})} className="input" placeholder="0.00" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label>
+            <select value={incomeForm.currency} onChange={(e) => setIncomeForm({...incomeForm, currency: e.target.value})} className="input">
+              <option value="USD">USD ($)</option>
+              <option value="PKR">PKR (Rs)</option>
+            </select>
           </div>
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
@@ -209,6 +209,13 @@ export default function Transactions({ ctx, toast }) {
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Amount *</label>
             <input type="number" value={expenseForm.amount} onChange={(e) => setExpenseForm({...expenseForm, amount: e.target.value})} className="input" placeholder="0.00" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label>
+            <select value={expenseForm.currency} onChange={(e) => setExpenseForm({...expenseForm, currency: e.target.value})} className="input">
+              <option value="USD">USD ($)</option>
+              <option value="PKR">PKR (Rs)</option>
+            </select>
           </div>
           <div>
             <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>

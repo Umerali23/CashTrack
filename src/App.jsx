@@ -15,7 +15,7 @@ import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
   const { user, logout, loading: authLoading } = useAuth();
-  const ctx = useCashTrack(); // No user parameter needed anymore
+  const ctx = useCashTrack();
   
   const [page, setPage] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
@@ -31,7 +31,9 @@ function AppContent() {
 
   if (authLoading || ctx.loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ink-950">
+      <div className={`min-h-screen flex items-center justify-center ${
+        ctx.theme === 'dark' ? 'bg-ink-950 text-ink-100' : 'bg-gray-50 text-gray-900'
+      }`}>
         <div className="text-ink-400 text-xl">Loading CashTrack...</div>
       </div>
     );
@@ -42,10 +44,12 @@ function AppContent() {
   }
 
   return (
-    <div className={`min-h-screen ${ctx.theme === 'dark' ? 'bg-ink-950 text-ink-100' : 'bg-zinc-50 text-zinc-900'} relative`}>
+    <div className={`min-h-screen ${
+      ctx.theme === 'dark' ? 'bg-ink-950 text-ink-100' : 'bg-gray-50 text-gray-900'
+    } relative`}>
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="blob bg-emerald-500/20 top-[-10%] left-[-10%] h-[500px] w-[500px]" />
-        <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
+        <div className={`blob ${ctx.theme === 'dark' ? 'bg-emerald-500/20' : 'bg-emerald-500/10'} top-[-10%] left-[-10%] h-[500px] w-[500px]`} />
+        <div className={`blob ${ctx.theme === 'dark' ? 'bg-violet-500/15' : 'bg-violet-500/10'} bottom-[-10%] right-[-10%] h-[600px] w-[600px]`} />
       </div>
       
       <Sidebar 
@@ -55,16 +59,11 @@ function AppContent() {
         onLogout={logout}
         displayCurrency={ctx.displayCurrency}
         setDisplayCurrency={ctx.setDisplayCurrency}
+        theme={ctx.theme}
+        setTheme={ctx.setTheme}
       />
       
-      <main className="
-        w-full 
-        pt-20 lg:pt-8
-        px-4 sm:px-6 lg:px-10
-        pb-24 lg:pb-8
-        lg:pl-72
-        transition-all duration-300
-      ">
+      <main className="w-full pt-20 lg:pt-8 px-4 sm:px-6 lg:px-10 pb-24 lg:pb-8 lg:pl-72 transition-all duration-300">
         <div className="max-w-7xl mx-auto animate-fade-in">
           {page === 'dashboard' && <Dashboard ctx={ctx} user={user} />}
           {page === 'transactions' && <Transactions ctx={ctx} toast={toast} user={user} />}
