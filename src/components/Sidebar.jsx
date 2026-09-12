@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, Briefcase, FileText, Users, DollarSign, 
-  TrendingUp, LogOut, Menu, X, Palette, Check 
+  TrendingUp, LogOut, Menu, X, Palette, Check
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -12,22 +12,35 @@ const NAV_ITEMS = [
   { id: 'transactions', label: 'Transactions', icon: DollarSign, roles: ['admin'] },
   { id: 'clients', label: 'Clients', icon: Users, roles: ['admin'] },
   { id: 'team', label: 'Team', icon: Users, roles: ['admin'] },
+  { id: 'earnings', label: 'My Earnings', icon: DollarSign, roles: ['member'] },
   { id: 'analytics', label: 'Analytics', icon: TrendingUp, roles: ['admin'] },
 ];
 
 const THEMES = [
-  { id: 'dark', name: 'Dark', icon: '🌙', desc: 'Deep slate with emerald accents' },
+  { id: 'dark', name: 'Dark', icon: '', desc: 'Deep slate with emerald accents' },
   { id: 'light', name: 'Light', icon: '☀️', desc: 'Clean white with subtle shadows' },
   { id: 'midnight', name: 'Midnight', icon: '🌌', desc: 'Rich indigo and violet tones' },
-  { id: 'ocean', name: 'Ocean', icon: '🌊', desc: 'Fresh sky blue and cyan hues' },
+  { id: 'ocean', name: 'Ocean', icon: '', desc: 'Fresh sky blue and cyan hues' },
 ];
 
-export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme }) {
+export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme, displayCurrency, setDisplayCurrency }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   const filteredNav = NAV_ITEMS.filter(item => isAdmin || item.roles.includes('member'));
+
+  const CurrencySelector = () => (
+    <select 
+      value={displayCurrency} 
+      onChange={(e) => setDisplayCurrency(e.target.value)}
+      className="w-full border text-xs rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] cursor-pointer bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-color)]"
+    >
+      <option value="PKR">PKR (Rs)</option>
+      <option value="USD">USD ($)</option>
+      <option value="ORIGINAL">Original Currency</option>
+    </select>
+  );
 
   return (
     <>
@@ -42,15 +55,12 @@ export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme
         </button>
       </div>
 
-      {/* Mobile Overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 glass-panel transform transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo */}
           <div className="h-16 flex items-center px-6 border-b border-[var(--border-color)]">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">$</div>
             <span className="ml-3 font-bold text-lg text-[var(--text-primary)]">CashTrack</span>
@@ -59,7 +69,6 @@ export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme
             </button>
           </div>
 
-          {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
             {filteredNav.map((item) => {
               const Icon = item.icon;
@@ -81,10 +90,9 @@ export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme
             })}
           </nav>
 
-          {/* User Profile & Theme Toggle */}
           <div className="p-4 border-t border-[var(--border-color)] space-y-3">
+            <CurrencySelector />
             
-            {/* Theme Selector Dropdown */}
             <div className="relative">
               <button 
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
@@ -124,7 +132,7 @@ export default function Sidebar({ page, setPage, user, onLogout, theme, setTheme
             </div>
 
             <div className="flex items-center gap-3 px-2 pt-2 border-t border-[var(--border-color)]">
-              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+              <div className={`h-9 w-9 rounded-full bg-gradient-to-br ${user?.avatarColor || 'from-violet-500 to-fuchsia-500'} flex items-center justify-center text-white font-bold text-sm shadow-md`}>
                 {user?.name?.[0] || 'U'}
               </div>
               <div className="flex-1 min-w-0">

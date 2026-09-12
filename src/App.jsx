@@ -30,13 +30,12 @@ function AppContent() {
 
   if (!user) return <Login theme={ctx.theme} setTheme={ctx.setTheme} />;
 
-  // Dynamic gradient colors based on theme
   const getGradientColors = () => {
     switch(ctx.theme) {
       case 'light': return 'bg-emerald-500/10 bg-violet-500/10';
       case 'midnight': return 'bg-indigo-500/15 bg-purple-500/15';
       case 'ocean': return 'bg-sky-500/15 bg-cyan-500/15';
-      default: return 'bg-emerald-500/10 bg-violet-500/10'; // dark
+      default: return 'bg-emerald-500/10 bg-violet-500/10';
     }
   };
 
@@ -44,22 +43,17 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300">
-      {/* Background Gradients */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className={`absolute top-0 left-0 w-[600px] h-[600px] rounded-full blur-3xl -translate-x-1/3 -translate-y-1/3 opacity-60 ${grad1}`} />
         <div className={`absolute bottom-0 right-0 w-[600px] h-[600px] rounded-full blur-3xl translate-x-1/3 translate-y-1/3 opacity-60 ${grad2}`} />
       </div>
 
       <Sidebar 
-        page={page} 
-        setPage={setPage} 
-        user={user} 
-        onLogout={logout}
-        theme={ctx.theme} 
-        setTheme={ctx.setTheme}
+        page={page} setPage={setPage} user={user} onLogout={logout}
+        theme={ctx.theme} setTheme={ctx.setTheme}
+        displayCurrency={ctx.displayCurrency} setDisplayCurrency={ctx.setDisplayCurrency}
       />
 
-      {/* Main Content Area */}
       <main className="lg:pl-64 min-h-screen relative z-10">
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
           {page === 'dashboard' && <Dashboard ctx={ctx} user={user} />}
