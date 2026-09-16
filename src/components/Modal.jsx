@@ -1,23 +1,52 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
-export default function Modal({ open, onClose, title, children }) {
+
+export default function Modal({ open, onClose, title, children, size = 'md' }) {
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-  }, [open, onClose]);
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [open]);
+
   if (!open) return null;
+
+  const sizeClasses = {
+    sm: 'max-w-md',
+    md: 'max-w-lg',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl'
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md glass rounded-2xl shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-600/60 sticky top-0 glass z-10">
-          <h3 className="font-bold text-lg tracking-tight">{title}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-ink-700/50 transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop Overlay */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal Container - Centered */}
+      <div className={`relative w-full ${sizeClasses[size]} rounded-2xl border shadow-2xl animate-scale-in max-h-[90vh] flex flex-col bg-ink-900 border-ink-800`}>
+        {/* Header - Fixed */}
+        <div className="flex items-center justify-between p-6 border-b border-ink-800 flex-shrink-0">
+          <h2 className="text-xl font-bold text-white">{title}</h2>
+          <button 
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-ink-800 text-ink-400 hover:text-white transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="p-6">{children}</div>
+
+        {/* Body - Scrollable */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );
