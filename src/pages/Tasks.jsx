@@ -147,6 +147,7 @@ export default function Tasks({ ctx, toast }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -163,6 +164,7 @@ export default function Tasks({ ctx, toast }) {
         )}
       </div>
 
+      {/* Task Grid */}
       {visibleTasks.length === 0 ? (
         <EmptyState
           title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"}
@@ -265,84 +267,148 @@ export default function Tasks({ ctx, toast }) {
         </div>
       )}
 
-      {/* ✅ FIXED: Modal with proper structure */}
+      {/* Create/Edit Modal - FIXED */}
       {user?.role === 'admin' && (
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
           <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
-              <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="input" placeholder="e.g. Design Homepage" />
-            </div>
-            
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
-              <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="input h-20 resize-none" placeholder="Task details..." />
+            {/* Title - Full Width */}
+            <div className="form-group">
+              <label className="form-label">Task Title *</label>
+              <input 
+                type="text" 
+                value={form.title} 
+                onChange={(e) => setForm({...form, title: e.target.value})} 
+                className="input w-full" 
+                placeholder="e.g. Design Homepage" 
+              />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
-                <select value={form.clientId} onChange={(e) => setForm({...form, clientId: e.target.value})} className="input">
+            {/* Description - Full Width */}
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea 
+                value={form.description} 
+                onChange={(e) => setForm({...form, description: e.target.value})} 
+                className="input w-full h-20 resize-none" 
+                placeholder="Task details..." 
+              />
+            </div>
+
+            {/* Client & Assign To - 2 Columns */}
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Client *</label>
+                <select 
+                  value={form.clientId} 
+                  onChange={(e) => setForm({...form, clientId: e.target.value})} 
+                  className="input w-full"
+                >
                   <option value="">Select Client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
-                <select value={form.assigneeId} onChange={(e) => setForm({...form, assigneeId: e.target.value})} className="input">
+              <div className="form-group">
+                <label className="form-label">Assign To *</label>
+                <select 
+                  value={form.assigneeId} 
+                  onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
+                  className="input w-full"
+                >
                   <option value="">Select Member</option>
                   {teamMembers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Priority</label>
-                <select value={form.priority} onChange={(e) => setForm({...form, priority: e.target.value})} className="input">
+            {/* Priority & Tags - 2 Columns */}
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Priority</label>
+                <select 
+                  value={form.priority} 
+                  onChange={(e) => setForm({...form, priority: e.target.value})} 
+                  className="input w-full"
+                >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Tags</label>
-                <input type="text" value={form.tags} onChange={(e) => setForm({...form, tags: e.target.value})} className="input" placeholder="Design, React" />
+              <div className="form-group">
+                <label className="form-label">Tags</label>
+                <input 
+                  type="text" 
+                  value={form.tags} 
+                  onChange={(e) => setForm({...form, tags: e.target.value})} 
+                  className="input w-full" 
+                  placeholder="Design, React" 
+                />
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Price *</label>
-                <input type="number" value={form.compensation} onChange={(e) => setForm({...form, compensation: e.target.value})} className="input" placeholder="0.00" min="0" step="0.01" />
+            {/* Price, Currency, Due Date - 3 Columns */}
+            <div className="form-grid-3">
+              <div className="form-group">
+                <label className="form-label">Price *</label>
+                <input 
+                  type="number" 
+                  value={form.compensation} 
+                  onChange={(e) => setForm({...form, compensation: e.target.value})} 
+                  className="input w-full" 
+                  placeholder="0.00" 
+                  min="0" 
+                  step="0.01" 
+                />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label>
-                <select value={form.currency} onChange={(e) => setForm({...form, currency: e.target.value})} className="input">
+              <div className="form-group">
+                <label className="form-label">Currency</label>
+                <select 
+                  value={form.currency} 
+                  onChange={(e) => setForm({...form, currency: e.target.value})} 
+                  className="input w-full"
+                >
                   <option value="USD">USD ($)</option>
                   <option value="PKR">PKR (Rs)</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
-                <input type="date" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} className="input" />
+              <div className="form-group">
+                <label className="form-label">Due Date</label>
+                <input 
+                  type="date" 
+                  value={form.dueDate} 
+                  onChange={(e) => setForm({...form, dueDate: e.target.value})} 
+                  className="input w-full" 
+                />
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label>
-              <select value={form.status} onChange={(e) => setForm({...form, status: e.target.value})} className="input">
+            {/* Status - Full Width */}
+            <div className="form-group">
+              <label className="form-label">Status</label>
+              <select 
+                value={form.status} 
+                onChange={(e) => setForm({...form, status: e.target.value})} 
+                className="input w-full"
+              >
                 <option value="pending">Pending</option>
                 <option value="in-progress">In Progress</option>
                 <option value="completed">Completed</option>
               </select>
             </div>
 
-            {/* ✅ Buttons at the bottom */}
-            <div className="flex gap-2 pt-4 border-t border-ink-800">
-              <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
-              <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100">
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-4 border-t border-ink-800">
+              <button 
+                onClick={() => setModalOpen(false)} 
+                className="btn-ghost flex-1 border border-ink-600"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100"
+              >
                 {editingTask ? 'Save Changes' : 'Create Task'}
               </button>
             </div>

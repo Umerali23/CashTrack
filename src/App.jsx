@@ -1,71 +1,80 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import { useCashTrack } from './hooks/useCashTrack';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Tasks from './pages/Tasks';
+import Transactions from './pages/Transactions';
 import Clients from './pages/Clients';
 import Team from './pages/Team';
+import Tasks from './pages/Tasks';
 import Invoices from './pages/Invoices';
-import Transactions from './pages/Transactions';
 import Analytics from './pages/Analytics';
 import Earnings from './pages/Earnings';
 
 function AppContent() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const ctx = useCashTrack();
+  
   const [page, setPage] = useState('dashboard');
+  const [toasts, setToasts] = useState([]);
 
-  if (ctx.loading) {
+  const toast = useCallback((message, type = 'success') => {
+    const id = `toast_${Date.now()}_${Math.random()}`;
+    setToasts((t) => [...t, { id, message, type }]);
+  }, []);
+  
+  const removeToast = useCallback((id) => {
+    setToasts((t) => t.filter((x) => x.id !== id));
+  }, []);
+
+  if (authLoading || ctx.loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] text-[var(--text-muted)]">
-        <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-[var(--accent-color)]/20" />
-          <div className="text-sm font-medium">Loading CashTrack...</div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-ink-950">
+        <div className="text-ink-400 text-xl">Loading CashTrack...</div>
       </div>
     );
   }
 
-  if (!user) return <Login theme={ctx.theme} setTheme={ctx.setTheme} />;
-
-  const getGradientColors = () => {
-    switch(ctx.theme) {
-      case 'light': return 'bg-emerald-500/10 bg-violet-500/10';
-      case 'midnight': return 'bg-indigo-500/15 bg-purple-500/15';
-      case 'ocean': return 'bg-sky-500/15 bg-cyan-500/15';
-      default: return 'bg-emerald-500/10 bg-violet-500/10';
-    }
-  };
-
-  const [grad1, grad2] = getGradientColors().split(' ');
+  if (!user) {
+    return <Login />;
+  }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300">
+    <div className={`min-h-screen ${ctx.theme === 'dark' ? 'bg-ink-950 text-ink-100' : 'bg-zinc-50 text-zinc-900'} relative`}>
+      {/* Background Effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute top-0 left-0 w-[600px] h-[600px] rounded-full blur-3xl -translate-x-1/3 -translate-y-1/3 opacity-60 ${grad1}`} />
-        <div className={`absolute bottom-0 right-0 w-[600px] h-[600px] rounded-full blur-3xl translate-x-1/3 translate-y-1/3 opacity-60 ${grad2}`} />
+        <div className="blob bg-emerald-500/20 top-[-10%] left-[-10%] h-[500px] w-[500px]" />
+        <div className="blob bg-violet-500/15 bottom-[-10%] right-[-10%] h-[600px] w-[600px]" />
       </div>
-
+      
+      {/* Sidebar */}
       <Sidebar 
-        page={page} setPage={setPage} user={user} onLogout={logout}
-        theme={ctx.theme} setTheme={ctx.setTheme}
-        displayCurrency={ctx.displayCurrency} setDisplayCurrency={ctx.setDisplayCurrency}
+        page={page} 
+        setPage={setPage} 
+        user={user}
+        onLogout={logout}
+        displayCurrency={ctx.displayCurrency}
+        setDisplayCurrency={ctx.setDisplayCurrency}
+        theme={ctx.theme}
+        setTheme={ctx.setTheme}
       />
-
-      <main className="lg:pl-64 min-h-screen relative z-10">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
+      
+      {/* Main Content */}
+      <main className="w-full pt-20 lg:pt-8 px-4 sm:px-6 lg:px-10 pb-24 lg:pb-8 lg:pl-72 transition-all duration-300">
+        <div className="max-w-7xl mx-auto animate-fade-in">
           {page === 'dashboard' && <Dashboard ctx={ctx} user={user} />}
-          {page === 'tasks' && <Tasks ctx={ctx} user={user} />}
-          {page === 'clients' && <Clients ctx={ctx} user={user} />}
-          {page === 'team' && <Team ctx={ctx} user={user} />}
-          {page === 'invoices' && <Invoices ctx={ctx} user={user} />}
-          {page === 'transactions' && <Transactions ctx={ctx} user={user} />}
+          {page === 'transactions' && <Transactions ctx={ctx} toast={toast} user={user} />}
+          {page === 'clients' && <Clients ctx={ctx} toast={toast} user={user} />}
+          {page === 'team' && <Team ctx={ctx} toast={toast} user={user} />}
+          {page === 'tasks' && <Tasks ctx={ctx} toast={toast} user={user} />}
+          {page === 'invoices' && <Invoices ctx={ctx} toast={toast} user={user} />}
           {page === 'analytics' && <Analytics ctx={ctx} user={user} />}
           {page === 'earnings' && <Earnings ctx={ctx} user={user} />}
         </div>
       </main>
+
+      <Toast toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }
