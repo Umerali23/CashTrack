@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, Calendar, User, Briefcase, Tag, Flag } from 'lucide-react';
+import { 
+  Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, 
+  Calendar, User, Briefcase, Tag, Flag, X, Filter 
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
@@ -24,6 +27,16 @@ export default function Tasks({ ctx, toast }) {
   const profiles = ctx.data?.profiles || [];
   const { addTask, updateTask, deleteTask } = ctx;
 
+  // Filter State
+  const [filters, setFilters] = useState({
+    status: [],
+    priority: [],
+    assignee: [],
+    client: []
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [form, setForm] = useState({
@@ -41,14 +54,60 @@ export default function Tasks({ ctx, toast }) {
 
   const visibleTasks = useMemo(() => {
     if (!user) return [];
-    if (user.role === 'admin') return tasks;
-    return tasks.filter(t => t.assigneeId === user.id);
-  }, [tasks, user]);
+    let filtered = user.role === 'admin' ? [...tasks] : tasks.filter(t => t.assigneeId === user.id);
 
-  const teamMembers = useMemo(() => {
-    return profiles.filter(p => p.role !== 'admin');
-  }, [profiles]);
+    // Apply Status Filter
+    if (filters.status.length > 0) {
+      filtered = filtered.filter(t => filters.status.includes(t.status));
+    }
 
+    // Apply Priority Filter
+    if (filters.priority.length > 0) {
+      filtered = filtered.filter(t => filters.priority.includes(t.priority));
+    }
+
+    // Apply Assignee Filter
+    if (filters.assignee.length > 0) {
+      filtered = filtered.filter(t => filters.assignee.includes(t.assigneeId));
+    }
+
+    // Apply Client Filter
+    if (filters.client.length > 0) {
+      filtered = filtered.filter(t => filters.client.includes(t.clientId));
+    }
+
+    return filtered;
+  }, [tasks, user, filters]);
+
+  const teamMembers = useMemo(() => profiles.filter(p => p.role !== 'admin'), [profiles]);
+
+  // Filter Handlers
+  const toggleFilter = (type, value) => {
+    setFilters(prev => {
+      const current = prev[type];
+      const updated = current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value];
+      return { ...prev, [type]: updated };
+    });
+  };
+
+  const clearFilters = () => {
+    setFilters({ status: [], priority: [], assignee: [], client: [] });
+  };
+
+  const hasActiveFilters = 
+    filters.status.length > 0 ||
+    filters.priority.length > 0 ||
+    filters.assignee.length > 0 ||
+    filters.client.length > 0;
+
+  const getActiveFilterCount = () => {
+    return filters.status.length + filters.priority.length + 
+           filters.assignee.length + filters.client.length;
+  };
+
+  // Task Modal Handlers
   const openNew = () => {
     setEditingTask(null);
     setForm({
@@ -155,6 +214,7 @@ export default function Tasks({ ctx, toast }) {
           </h1>
           <p className="text-ink-400 text-sm mt-1">
             {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''} found
+            {hasActiveFilters && ` (filtered from ${tasks.length})`}
           </p>
         </div>
         {user?.role === 'admin' && (
@@ -164,12 +224,191 @@ export default function Tasks({ ctx, toast }) {
         )}
       </div>
 
+      {/* Filter Bar - No Search */}
+      <div className="glass rounded-2xl p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+              showFilters || hasActiveFilters
+                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                : 'border-ink-600 text-ink-300 hover:bg-ink-800/50'
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            Filters
+            {getActiveFilterCount() > 0 && (
+              <span className="ml-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
+                {getActiveFilterCount()}
+              </span>
+            )}
+          </button>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/50 text-rose-400 hover:bg-rose-500/10 transition-all"
+            >
+              <X className="h-4 w-4" />
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Filter Options */}
+        {showFilters && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-ink-600/50">
+            {/* Status Filter */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-2 block">Status</label>
+              <div className="space-y-2">
+                {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                  <button
+                    key={key}
+                    onClick={() => toggleFilter('status', key)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      filters.status.includes(key)
+                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                    }`}
+                  >
+                    <config.icon className="h-3.5 w-3.5" />
+                    {config.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-2 block">Priority</label>
+              <div className="space-y-2">
+                {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                  <button
+                    key={key}
+                    onClick={() => toggleFilter('priority', key)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      filters.priority.includes(key)
+                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${
+                      key === 'low' ? 'bg-slate-400' :
+                      key === 'medium' ? 'bg-blue-400' :
+                      key === 'high' ? 'bg-amber-400' : 'bg-rose-400'
+                    }`} />
+                    {config.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Assignee Filter */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-2 block">Assignee</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {teamMembers.map(member => (
+                  <button
+                    key={member.id}
+                    onClick={() => toggleFilter('assignee', member.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      filters.assignee.includes(member.id)
+                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                    }`}
+                  >
+                    <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-[8px] font-bold text-white`}>
+                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <span className="truncate">{member.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Client Filter */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-2 block">Client</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {clients.map(client => (
+                  <button
+                    key={client.id}
+                    onClick={() => toggleFilter('client', client.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      filters.client.includes(client.id)
+                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                    }`}
+                  >
+                    <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${client.avatarColor} flex items-center justify-center text-[8px] font-bold text-white`}>
+                      {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <span className="truncate">{client.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Active Filter Chips */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-ink-600/50">
+            {filters.status.map(status => (
+              <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                {STATUS_CONFIG[status].label}
+                <button onClick={() => toggleFilter('status', status)} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            {filters.priority.map(priority => (
+              <span key={priority} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                {PRIORITY_CONFIG[priority].label}
+                <button onClick={() => toggleFilter('priority', priority)} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            {filters.assignee.map(assigneeId => {
+              const member = profiles.find(p => p.id === assigneeId);
+              return member ? (
+                <span key={assigneeId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  {member.name}
+                  <button onClick={() => toggleFilter('assignee', assigneeId)} className="hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null;
+            })}
+            {filters.client.map(clientId => {
+              const client = clients.find(c => c.id === clientId);
+              return client ? (
+                <span key={clientId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  {client.name}
+                  <button onClick={() => toggleFilter('client', clientId)} className="hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null;
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Task Grid */}
       {visibleTasks.length === 0 ? (
         <EmptyState
-          title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"}
-          description={user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now."}
-          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> Create Task</button> : null}
+          title={hasActiveFilters ? "No tasks match your filters" : (user?.role === 'admin' ? "No tasks yet" : "No tasks assigned")}
+          description={hasActiveFilters 
+            ? "Try adjusting your filters to see more tasks."
+            : (user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now.")
+          }
+          action={!hasActiveFilters && user?.role === 'admin' ? (
+            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
+              <Plus className="h-4 w-4" /> Create Task
+            </button>
+          ) : null}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -267,148 +506,101 @@ export default function Tasks({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create/Edit Modal - FIXED */}
+      {/* Create/Edit Modal */}
       {user?.role === 'admin' && (
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
           <div className="space-y-4">
-            {/* Title - Full Width */}
-            <div className="form-group">
-              <label className="form-label">Task Title *</label>
-              <input 
-                type="text" 
-                value={form.title} 
-                onChange={(e) => setForm({...form, title: e.target.value})} 
-                className="input w-full" 
-                placeholder="e.g. Design Homepage" 
-              />
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
+              <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="input" placeholder="e.g. Design Homepage" />
+            </div>
+            
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
+              <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="input h-20 resize-none" placeholder="Task details..." />
             </div>
 
-            {/* Description - Full Width */}
-            <div className="form-group">
-              <label className="form-label">Description</label>
-              <textarea 
-                value={form.description} 
-                onChange={(e) => setForm({...form, description: e.target.value})} 
-                className="input w-full h-20 resize-none" 
-                placeholder="Task details..." 
-              />
-            </div>
-
-            {/* Client & Assign To - 2 Columns */}
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Client *</label>
-                <select 
-                  value={form.clientId} 
-                  onChange={(e) => setForm({...form, clientId: e.target.value})} 
-                  className="input w-full"
-                >
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Client *</label>
+                <select value={form.clientId} onChange={(e) => setForm({...form, clientId: e.target.value})} className="input">
                   <option value="">Select Client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Assign To *</label>
-                <select 
-                  value={form.assigneeId} 
-                  onChange={(e) => setForm({...form, assigneeId: e.target.value})} 
-                  className="input w-full"
-                >
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Assign To *</label>
+                <select value={form.assigneeId} onChange={(e) => setForm({...form, assigneeId: e.target.value})} className="input">
                   <option value="">Select Member</option>
                   {teamMembers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Priority & Tags - 2 Columns */}
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Priority</label>
-                <select 
-                  value={form.priority} 
-                  onChange={(e) => setForm({...form, priority: e.target.value})} 
-                  className="input w-full"
-                >
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Priority</label>
+                <select value={form.priority} onChange={(e) => setForm({...form, priority: e.target.value})} className="input">
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Tags</label>
-                <input 
-                  type="text" 
-                  value={form.tags} 
-                  onChange={(e) => setForm({...form, tags: e.target.value})} 
-                  className="input w-full" 
-                  placeholder="Design, React" 
-                />
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Tags</label>
+                <input type="text" value={form.tags} onChange={(e) => setForm({...form, tags: e.target.value})} className="input" placeholder="Design, React" />
               </div>
             </div>
 
-            {/* Price, Currency, Due Date - 3 Columns */}
-            <div className="form-grid-3">
-              <div className="form-group">
-                <label className="form-label">Price *</label>
-                <input 
-                  type="number" 
-                  value={form.compensation} 
-                  onChange={(e) => setForm({...form, compensation: e.target.value})} 
-                  className="input w-full" 
-                  placeholder="0.00" 
-                  min="0" 
-                  step="0.01" 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Price *</label>
+                <input
+                  type="number"
+                  value={form.compensation}
+                  onChange={(e) => setForm({...form, compensation: e.target.value})}
+                  className="input"
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
                 />
               </div>
-              <div className="form-group">
-                <label className="form-label">Currency</label>
-                <select 
-                  value={form.currency} 
-                  onChange={(e) => setForm({...form, currency: e.target.value})} 
-                  className="input w-full"
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label>
+                <select
+                  value={form.currency}
+                  onChange={(e) => setForm({...form, currency: e.target.value})}
+                  className="input"
                 >
                   <option value="USD">USD ($)</option>
                   <option value="PKR">PKR (Rs)</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Due Date</label>
-                <input 
-                  type="date" 
-                  value={form.dueDate} 
-                  onChange={(e) => setForm({...form, dueDate: e.target.value})} 
-                  className="input w-full" 
-                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({...form, status: e.target.value})}
+                  className="input"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Due Date</label>
+                <input type="date" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} className="input" />
               </div>
             </div>
 
-            {/* Status - Full Width */}
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select 
-                value={form.status} 
-                onChange={(e) => setForm({...form, status: e.target.value})} 
-                className="input w-full"
-              >
-                <option value="pending">Pending</option>
-                <option value="in-progress">In Progress</option>
-                <option value="completed">Completed</option>
-              </select>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-4 border-t border-ink-800">
-              <button 
-                onClick={() => setModalOpen(false)} 
-                className="btn-ghost flex-1 border border-ink-600"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSave} 
-                className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100"
-              >
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
+              <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100">
                 {editingTask ? 'Save Changes' : 'Create Task'}
               </button>
             </div>

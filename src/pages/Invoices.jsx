@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Eye, Trash2, CheckCircle, Clock, AlertCircle, FileText, Pencil } from 'lucide-react';
+import { Plus, Eye, Trash2, CheckCircle, Clock, AlertCircle, FileText, Pencil, X, Filter } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
@@ -20,6 +20,15 @@ export default function Invoices({ ctx, toast }) {
   const clients = data?.clients || [];
   const tasks = data?.tasks || [];
 
+  // Filter State
+  const [filters, setFilters] = useState({
+    status: [],
+    client: [],
+    dateRange: 'all'
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(null);
@@ -35,10 +44,44 @@ export default function Invoices({ ctx, toast }) {
   });
 
   const visibleInvoices = useMemo(() => {
-    if (user?.role === 'admin') return invoices;
+    if (user?.role === 'admin') {
+      let filtered = [...invoices];
+
+      // Apply Status Filter
+      if (filters.status.length > 0) {
+        filtered = filtered.filter(inv => filters.status.includes(inv.status));
+      }
+
+      // Apply Client Filter
+      if (filters.client.length > 0) {
+        filtered = filtered.filter(inv => filters.client.includes(inv.clientId));
+      }
+
+      // Apply Date Range Filter
+      if (filters.dateRange !== 'all') {
+        const now = new Date();
+        const dateFilter = new Date();
+        
+        if (filters.dateRange === 'week') {
+          dateFilter.setDate(now.getDate() - 7);
+        } else if (filters.dateRange === 'month') {
+          dateFilter.setMonth(now.getMonth() - 1);
+        } else if (filters.dateRange === 'quarter') {
+          dateFilter.setMonth(now.getMonth() - 3);
+        }
+
+        filtered = filtered.filter(inv => {
+          const invDate = new Date(inv.issueDate || inv.createdAt);
+          return invDate >= dateFilter;
+        });
+      }
+
+      return filtered;
+    }
+    
     const memberTaskClientIds = tasks.filter(t => t.assigneeId === user.id).map(t => t.clientId);
     return invoices.filter(inv => memberTaskClientIds.includes(inv.clientId));
-  }, [invoices, tasks, user]);
+  }, [invoices, tasks, user, filters]);
 
   const totalAmount = useMemo(() => visibleInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0), [visibleInvoices]);
 
@@ -50,6 +93,30 @@ export default function Invoices({ ctx, toast }) {
       !invoices.some(inv => inv.linkedTaskIds?.includes(t.id))
     );
   }, [selectedClientId, tasks, invoices]);
+
+  // Filter Handlers
+  const toggleFilter = (type, value) => {
+    setFilters(prev => {
+      const current = prev[type];
+      const updated = current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value];
+      return { ...prev, [type]: updated };
+    });
+  };
+
+  const clearFilters = () => {
+    setFilters({ status: [], client: [], dateRange: 'all' });
+  };
+
+  const hasActiveFilters = 
+    filters.status.length > 0 ||
+    filters.client.length > 0 ||
+    filters.dateRange !== 'all';
+
+  const getActiveFilterCount = () => {
+    return filters.status.length + filters.client.length + (filters.dateRange !== 'all' ? 1 : 0);
+  };
 
   const openNew = () => {
     setForm({
@@ -140,6 +207,7 @@ export default function Invoices({ ctx, toast }) {
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Invoices</h1>
           <p className="text-ink-400 text-sm mt-1">
             {visibleInvoices.length} invoices • {formatCurrency(totalAmount, currency, true)} total
+            {hasActiveFilters && ` (filtered from ${invoices.length})`}
           </p>
         </div>
         {user?.role === 'admin' && (
@@ -157,11 +225,163 @@ export default function Invoices({ ctx, toast }) {
         )}
       </div>
 
+      {/* Filter Bar */}
+      {user?.role === 'admin' && (
+        <div className="glass rounded-2xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+                showFilters || hasActiveFilters
+                  ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                  : 'border-ink-600 text-ink-300 hover:bg-ink-800/50'
+              }`}
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {getActiveFilterCount() > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
+                  {getActiveFilterCount()}
+                </span>
+              )}
+            </button>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/50 text-rose-400 hover:bg-rose-500/10 transition-all"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Filter Options */}
+          {showFilters && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-ink-600/50">
+              {/* Status Filter */}
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-2 block">Status</label>
+                <div className="space-y-2">
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <button
+                      key={key}
+                      onClick={() => toggleFilter('status', key)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        filters.status.includes(key)
+                          ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                          : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        key === 'draft' ? 'bg-ink-400' :
+                        key === 'sent' ? 'bg-blue-400' : 'bg-emerald-400'
+                      }`} />
+                      {config.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Client Filter */}
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-2 block">Client</label>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {clients.map(client => (
+                    <button
+                      key={client.id}
+                      onClick={() => toggleFilter('client', client.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        filters.client.includes(client.id)
+                          ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                          : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                      }`}
+                    >
+                      <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${client.avatarColor} flex items-center justify-center text-[8px] font-bold text-white`}>
+                        {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </div>
+                      <span className="truncate">{client.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date Range Filter */}
+              <div>
+                <label className="text-xs font-semibold text-ink-300 mb-2 block">Date Range</label>
+                <div className="space-y-2">
+                  {[
+                    { value: 'all', label: 'All Time' },
+                    { value: 'week', label: 'Last 7 Days' },
+                    { value: 'month', label: 'Last 30 Days' },
+                    { value: 'quarter', label: 'Last 3 Months' }
+                  ].map(range => (
+                    <button
+                      key={range.value}
+                      onClick={() => setFilters(prev => ({ ...prev, dateRange: range.value }))}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        filters.dateRange === range.value
+                          ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                          : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${filters.dateRange === range.value ? 'bg-emerald-400' : 'bg-ink-500'}`} />
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Filter Chips */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-ink-600/50">
+              {filters.status.map(status => (
+                <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  {STATUS_CONFIG[status].label}
+                  <button onClick={() => toggleFilter('status', status)} className="hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {filters.client.map(clientId => {
+                const client = clients.find(c => c.id === clientId);
+                return client ? (
+                  <span key={clientId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                    {client.name}
+                    <button onClick={() => toggleFilter('client', clientId)} className="hover:text-white">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ) : null;
+              })}
+              {filters.dateRange !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  {filters.dateRange === 'week' ? 'Last 7 Days' : 
+                   filters.dateRange === 'month' ? 'Last 30 Days' : 'Last 3 Months'}
+                  <button onClick={() => setFilters(prev => ({ ...prev, dateRange: 'all' }))} className="hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {visibleInvoices.length === 0 ? (
         <EmptyState
-          title="No invoices yet"
-          description="Create your first invoice to get started."
-          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> Create Invoice</button> : null}
+          title={hasActiveFilters ? "No invoices match your filters" : "No invoices yet"}
+          description={hasActiveFilters 
+            ? "Try adjusting your filters to see more invoices."
+            : "Create your first invoice to get started."
+          }
+          action={!hasActiveFilters && user?.role === 'admin' ? (
+            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
+              <Plus className="h-4 w-4" /> Create Invoice
+            </button>
+          ) : null}
         />
       ) : (
         <div className="glass rounded-2xl overflow-hidden">
@@ -238,7 +458,7 @@ export default function Invoices({ ctx, toast }) {
         </div>
       )}
 
-      {/* ✅ FIXED: Create Invoice Modal */}
+      {/* Create Invoice Modal */}
       {user?.role === 'admin' && (
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Invoice">
           <div className="space-y-4">
@@ -249,7 +469,6 @@ export default function Invoices({ ctx, toast }) {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name} - {c.company}</option>)}
               </select>
             </div>
-            
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Total Amount *</label>
               <input
@@ -260,7 +479,6 @@ export default function Invoices({ ctx, toast }) {
                 placeholder="0.00"
               />
             </div>
-            
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description / Items</label>
               <textarea
@@ -270,7 +488,6 @@ export default function Invoices({ ctx, toast }) {
                 placeholder="e.g. Web Development Services"
               />
             </div>
-            
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Issue Date</label>
@@ -291,8 +508,7 @@ export default function Invoices({ ctx, toast }) {
                 />
               </div>
             </div>
-
-            <div className="flex gap-2 pt-4 border-t border-ink-800">
+            <div className="flex gap-2 pt-2">
               <button onClick={() => setModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
               <button onClick={handleSave} className="btn-primary flex-1 bg-white text-ink-950 hover:bg-ink-100">Create Invoice</button>
             </div>
@@ -300,7 +516,7 @@ export default function Invoices({ ctx, toast }) {
         </Modal>
       )}
 
-      {/* ✅ FIXED: Generate from Tasks Modal */}
+      {/* Generate from Tasks Modal */}
       {user?.role === 'admin' && (
         <Modal open={generateModalOpen} onClose={() => setGenerateModalOpen(false)} title="Generate Invoice from Completed Tasks" size="lg">
           <div className="space-y-4">
@@ -318,7 +534,6 @@ export default function Invoices({ ctx, toast }) {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-
             {selectedClientId && (
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">
@@ -362,7 +577,6 @@ export default function Invoices({ ctx, toast }) {
                 )}
               </div>
             )}
-
             {selectedTaskIds.length > 0 && (
               <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                 <div className="flex justify-between items-center">
@@ -379,8 +593,7 @@ export default function Invoices({ ctx, toast }) {
                 </div>
               </div>
             )}
-
-            <div className="flex gap-2 pt-4 border-t border-ink-800">
+            <div className="flex gap-2 pt-2">
               <button onClick={() => setGenerateModalOpen(false)} className="btn-ghost flex-1 border border-ink-600">Cancel</button>
               <button
                 onClick={handleGenerateFromTasks}
@@ -394,7 +607,7 @@ export default function Invoices({ ctx, toast }) {
         </Modal>
       )}
 
-      {/* ✅ FIXED: View Invoice Modal */}
+      {/* View Invoice Modal */}
       {viewingInvoice && (
         <Modal open={!!viewingInvoice} onClose={() => setViewingInvoice(null)} title="Invoice Details" size="lg">
           <div className="space-y-4">
@@ -409,7 +622,6 @@ export default function Invoices({ ctx, toast }) {
                 {STATUS_CONFIG[viewingInvoice.status]?.label}
               </span>
             </div>
-
             <div className="p-4 rounded-xl bg-ink-900/50">
               <div className="text-xs text-ink-400 mb-1">Bill To:</div>
               <div className="font-semibold">
@@ -419,7 +631,6 @@ export default function Invoices({ ctx, toast }) {
                 {clients.find(c => c.id === viewingInvoice.clientId)?.company}
               </div>
             </div>
-
             <div className="space-y-2">
               {viewingInvoice.items?.map((item, index) => (
                 <div key={index} className="flex justify-between items-center py-2 border-b border-ink-600/50">
@@ -432,7 +643,6 @@ export default function Invoices({ ctx, toast }) {
                 </div>
               ))}
             </div>
-
             <div className="pt-4 border-t border-ink-600/50 flex justify-between items-center">
               <span className="text-sm font-semibold text-ink-300">Total</span>
               <span className="text-2xl font-bold text-emerald-400">
