@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
-import { useCashTrack } from './hooks/useCashTrack';
+import Toast from './components/Toast';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
@@ -11,6 +11,7 @@ import Tasks from './pages/Tasks';
 import Invoices from './pages/Invoices';
 import Analytics from './pages/Analytics';
 import Earnings from './pages/Earnings';
+import { useCashTrack } from './hooks/useCashTrack';
 
 function AppContent() {
   const { user, logout, loading: authLoading } = useAuth();
@@ -74,6 +75,7 @@ function AppContent() {
         </div>
       </main>
 
+      {/* ✅ Toast Component - Now properly imported and used */}
       <Toast toasts={toasts} removeToast={removeToast} />
     </div>
   );
