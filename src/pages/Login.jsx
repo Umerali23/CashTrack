@@ -188,17 +188,7 @@ export default function Login({ theme, setTheme }) {
         </form>
 
         {/* ✅ FIXED: Better styled demo credentials box */}
-        <div className={`mt-6 p-4 rounded-xl border text-xs ${
-          isDark 
-            ? 'bg-slate-800/50 border-slate-700 text-slate-400' 
-            : 'bg-slate-50 border-slate-200 text-slate-600'
-        }`}>
-          <div className={`font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Demo Credentials:</div>
-          <div className="space-y-0.5">
-            <div>Admin: admin@cashtrack.com / admin123</div>
-            <div>Member: umer@cashtrack.com / umer123</div>
-          </div>
-        </div>
+        
       </div>
     </div>
   );
