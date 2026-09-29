@@ -2,12 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { convertAmount } from '../lib/currency';
 import { useAuth } from '../context/AuthContext';
-// import { 
-//   sendTaskAssignedEmail, 
-//   sendTaskCommentEmail, 
-//   sendInvoicePaidEmail 
-// } from '../lib/emailService';
-
 
 export const useCashTrack = () => {
   const { user } = useAuth();
@@ -25,7 +19,6 @@ export const useCashTrack = () => {
   const [displayCurrency, setDisplayCurrency] = useState('PKR');
   const [theme, setTheme] = useState(() => localStorage.getItem('cashtrack_theme') || 'dark');
 
-  // Apply theme to HTML tag
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark', 'midnight', 'ocean');
@@ -33,7 +26,7 @@ export const useCashTrack = () => {
     localStorage.setItem('cashtrack_theme', theme);
   }, [theme]);
 
-  // --- HELPER: Add Notification ---
+  // --- HELPER: Add In-App Notification Only (No Email) ---
   const addNotification = useCallback(async (targetUserId, title, message) => {
     if (!targetUserId) return;
     try {
@@ -45,14 +38,12 @@ export const useCashTrack = () => {
         is_read: false,
         created_at: new Date().toISOString()
       }]);
-      // Refresh notifications immediately
       const { data: newNotifs } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50);
-      
       setData(prev => ({ ...prev, notifications: newNotifs || [] }));
     } catch (error) {
       console.error('Notification error:', error);
@@ -146,7 +137,7 @@ export const useCashTrack = () => {
   }, [fetchData]);
 
   // ==========================================
-  // CRUD OPERATIONS
+  // CRUD OPERATIONS (No EmailJS)
   // ==========================================
 
   // --- CLIENTS ---
@@ -225,7 +216,6 @@ export const useCashTrack = () => {
       description: task.description,
       status: task.status || 'pending',
       priority: task.priority || 'medium',
-      // ✅ FIX: Safely handle tags whether it's an array or string
       tags: Array.isArray(task.tags) ? task.tags.join(',') : (task.tags || ''),
       due_date: task.dueDate,
       compensation: parseFloat(task.compensation) || 0,
@@ -238,11 +228,10 @@ export const useCashTrack = () => {
     const { error } = await supabase.from('tasks').insert([newTask]);
     if (error) throw error;
     
-    // Trigger Email & Notification
+    // In-app notification only (no email)
     if (task.assigneeId) {
       const assignee = data.profiles.find(p => p.id === task.assigneeId);
-      if (assignee && assignee.email) {
-        await sendTaskAssignedEmail(assignee.email, assignee.name, task.title, user?.name);
+      if (assignee) {
         await addNotification(task.assigneeId, 'New Task Assigned', `You have been assigned: "${task.title}" by ${user?.name}.`);
       }
     }
@@ -255,7 +244,6 @@ export const useCashTrack = () => {
       description: patch.description,
       status: patch.status,
       priority: patch.priority,
-      // ✅ FIX: Safely handle tags whether it's an array or string
       tags: Array.isArray(patch.tags) ? patch.tags.join(',') : (patch.tags || ''),
       due_date: patch.dueDate,
       compensation: patch.compensation,
@@ -315,7 +303,7 @@ export const useCashTrack = () => {
     await fetchData();
   };
 
-  // --- COMMENTS ---
+  // --- COMMENTS (No Email) ---
   const addComment = async (taskId, content) => {
     if (!content.trim()) return;
     const { error } = await supabase.from('comments').insert([{
@@ -327,13 +315,10 @@ export const useCashTrack = () => {
     }]);
     if (error) throw error;
     
+    // In-app notification only (no email)
     const task = data.tasks.find(t => t.id === taskId);
     if (task && task.assigneeId && task.assigneeId !== user.id) {
-      const assignee = data.profiles.find(p => p.id === task.assigneeId);
-      if (assignee && assignee.email) {
-        await sendTaskCommentEmail(assignee.email, assignee.name, user.name, task.title, content);
-        await addNotification(task.assigneeId, 'New Comment', `${user.name} commented on "${task.title}": "${content.substring(0, 30)}..."`);
-      }
+      await addNotification(task.assigneeId, 'New Comment', `${user.name} commented on "${task.title}": "${content.substring(0, 30)}..."`);
     }
     await fetchData();
   };
@@ -405,7 +390,6 @@ export const useCashTrack = () => {
 
     await supabase.from('invoices').update({ status: 'paid' }).eq('id', invoiceId);
 
-    // Create transaction
     await supabase.from('transactions').insert([{
       id: crypto.randomUUID(),
       type: 'income',
@@ -422,7 +406,6 @@ export const useCashTrack = () => {
       created_at: new Date().toISOString()
     }]);
 
-    // Create payouts for team members
     if (invoice.linked_task_ids && invoice.linked_task_ids.length > 0) {
       const { data: tasks } = await supabase
         .from('tasks')
@@ -446,10 +429,9 @@ export const useCashTrack = () => {
               created_at: new Date().toISOString()
             }]);
             
-            // Notify and email team member
+            // In-app notification only (no email)
             const member = data.profiles.find(p => p.id === task.assignee_id);
-            if (member && member.email) {
-              await sendInvoicePaidEmail(member.email, member.name, invoice.invoice_number, task.compensation);
+            if (member) {
               await addNotification(task.assignee_id, 'Payout Received', `Invoice ${invoice.invoice_number} was paid. Your payout of ${task.currency} ${task.compensation} has been recorded.`);
             }
           }
@@ -520,9 +502,7 @@ export const useCashTrack = () => {
     await fetchData();
   };
 
-  // ==========================================
-  // DERIVED DATA & HELPERS
-  // ==========================================
+  // --- DERIVED DATA ---
   const toDisplay = useCallback((amount, originalCurrency) =>
     convertAmount(amount || 0, originalCurrency || 'USD', displayCurrency),
     [displayCurrency]
@@ -573,9 +553,6 @@ export const useCashTrack = () => {
     return (data.notifications || []).slice(0, 20);
   }, [data.notifications]);
 
-  // ==========================================
-  // RETURN STATEMENT (Ensures all functions are exposed)
-  // ==========================================
   return {
     data,
     setData,
@@ -584,39 +561,31 @@ export const useCashTrack = () => {
     setDisplayCurrency,
     theme,
     setTheme,
-    // Clients
     addClient,
     updateClient,
     deleteClient,
-    // Team
     addTeamMember,
     updateTeamMember,
     deleteTeamMember,
-    // Tasks
     addTask,
     updateTask,
     deleteTask,
     uploadAttachment,
     deleteAttachment,
-    // Comments
     addComment,
     deleteComment,
     getTaskComments,
-    // Notifications
     addNotification,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     deleteNotification,
-    // Invoices
     addInvoice,
     updateInvoice,
     deleteInvoice,
     markInvoiceAsPaid,
     generateInvoiceFromTasks,
-    // Transactions
     addManualIncome,
     addExpense,
-    // Derived Data
     toDisplay,
     aggregates,
     memberEarnings,

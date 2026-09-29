@@ -29,6 +29,7 @@ export default function Tasks({ ctx, toast }) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [viewingTask, setViewingTask] = useState(null); // ✅ New state for viewing task details
   const [uploading, setUploading] = useState(false);
   
   const [form, setForm] = useState({
@@ -80,6 +81,11 @@ export default function Tasks({ ctx, toast }) {
     setModalOpen(true);
   };
 
+  // ✅ New: Open task detail view for team members
+  const openTaskDetail = (task) => {
+    setViewingTask(task);
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -99,7 +105,7 @@ export default function Tasks({ ctx, toast }) {
       toast('Failed to upload file', 'error');
     } finally {
       setUploading(false);
-      e.target.value = ''; // Reset input
+      e.target.value = '';
     }
   };
 
@@ -146,6 +152,18 @@ export default function Tasks({ ctx, toast }) {
     } catch (error) {
       console.error('Error saving task:', error);
       toast('Failed to save task: ' + error.message, 'error');
+    }
+  };
+
+  // ✅ New: Handle status change from detail view
+  const handleStatusChangeFromDetail = async (newStatus) => {
+    if (!viewingTask) return;
+    try {
+      await updateTask(viewingTask.id, { ...viewingTask, status: newStatus });
+      toast(`Task marked as ${newStatus}`, 'success');
+      setViewingTask({ ...viewingTask, status: newStatus }); // Update local state
+    } catch (error) {
+      toast('Failed to update task', 'error');
     }
   };
 
@@ -234,16 +252,26 @@ export default function Tasks({ ctx, toast }) {
                         </button>
                       </>
                     )}
-                    {user?.role !== 'admin' && status !== 'completed' && (
-                      <button onClick={() => handleStatusChange(task, 'completed')} className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded-md transition-colors">
-                        Mark Done
+                    {/* ✅ Team members see "View Details" instead of "Mark Done" */}
+                    {user?.role !== 'admin' && (
+                      <button 
+                        onClick={() => openTaskDetail(task)} 
+                        className="text-[10px] font-bold text-blue-400 hover:text-blue-300 bg-blue-500/10 px-2 py-1 rounded-md transition-colors"
+                      >
+                        View Details
                       </button>
                     )}
                   </div>
                 </div>
 
-                <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={title}>{title}</h3>
-                <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow whitespace-pre-wrap">{description}</p>
+                {/* ✅ Make task card clickable for team members */}
+                <div 
+                  className={user?.role !== 'admin' ? 'cursor-pointer' : ''}
+                  onClick={() => user?.role !== 'admin' && openTaskDetail(task)}
+                >
+                  <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={title}>{title}</h3>
+                  <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow whitespace-pre-wrap break-words">{description}</p>
+                </div>
 
                 {tagsArray.length > 0 && tagsArray[0] && (
                   <div className="flex flex-wrap gap-1 mb-3">
@@ -281,7 +309,7 @@ export default function Tasks({ ctx, toast }) {
                   </div>
                 </div>
 
-                {/* ✅ NEW: Attachments Section on Task Card */}
+                {/* Attachments Section */}
                 {task.attachments && task.attachments.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-ink-600/50">
                     <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-2 flex items-center gap-1">
@@ -310,23 +338,149 @@ export default function Tasks({ ctx, toast }) {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* ✅ NEW: Task Detail Modal for Team Members */}
+      {viewingTask && user?.role !== 'admin' && (
+        <Modal open={!!viewingTask} onClose={() => setViewingTask(null)} title="Task Details" size="lg">
+          <div className="space-y-6">
+            {/* Task Header */}
+            <div>
+              <h2 className="text-2xl font-bold text-ink-100 mb-2">{viewingTask.title}</h2>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_CONFIG[viewingTask.status]?.color}`}>
+                  {(() => { const Icon = STATUS_CONFIG[viewingTask.status]?.icon || Clock; return <Icon className="h-3 w-3" />; })()}
+                  {STATUS_CONFIG[viewingTask.status]?.label}
+                </span>
+                <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${PRIORITY_CONFIG[viewingTask.priority]?.color}`}>
+                  {PRIORITY_CONFIG[viewingTask.priority]?.label} Priority
+                </span>
+              </div>
+            </div>
+
+            {/* Task Meta Info */}
+            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-ink-900/40 border border-ink-600/50">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Client</div>
+                <div className="text-sm font-medium text-ink-200">
+                  {clients.find(c => c.id === viewingTask.clientId)?.name || 'Unknown'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Assigned To</div>
+                <div className="text-sm font-medium text-ink-200">
+                  {profiles.find(p => p.id === viewingTask.assigneeId)?.name || 'Unassigned'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Due Date</div>
+                <div className="text-sm font-medium text-ink-200">
+                  {viewingTask.dueDate ? new Date(viewingTask.dueDate).toLocaleDateString() : 'Not set'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">Price</div>
+                <div className="text-sm font-bold text-emerald-400">
+                  {viewingTask.currency === 'USD' ? '$' : 'Rs'} {viewingTask.compensation || 0} {viewingTask.currency || 'USD'}
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <div className="text-xs font-semibold text-ink-300 mb-2">Description</div>
+              <div className="p-4 rounded-xl bg-ink-900/40 border border-ink-600/50 text-sm text-ink-200 whitespace-pre-wrap break-words min-h-[100px]">
+                {viewingTask.description || 'No description provided.'}
+              </div>
+            </div>
+
+            {/* Tags */}
+            {viewingTask.tags && (() => {
+              const tagsArray = Array.isArray(viewingTask.tags) ? viewingTask.tags : viewingTask.tags.split(',').map(t => t.trim());
+              return tagsArray.length > 0 && tagsArray[0] ? (
+                <div>
+                  <div className="text-xs font-semibold text-ink-300 mb-2">Tags</div>
+                  <div className="flex flex-wrap gap-2">
+                    {tagsArray.map((tag, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                        <Tag className="h-3 w-3" />{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Attachments */}
+            {viewingTask.attachments && viewingTask.attachments.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-ink-300 mb-2 flex items-center gap-2">
+                  <Paperclip className="h-4 w-4" /> Attachments ({viewingTask.attachments.length})
+                </div>
+                <div className="space-y-2">
+                  {viewingTask.attachments.map(att => (
+                    <a 
+                      key={att.id} 
+                      href={att.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-xl bg-ink-900/40 border border-ink-600/50 hover:bg-ink-800/60 transition-colors group"
+                    >
+                      <FileText className="h-5 w-5 text-ink-400 group-hover:text-emerald-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-ink-200 truncate">{att.name}</div>
+                        <div className="text-xs text-ink-400">{(att.size / 1024).toFixed(1)} KB</div>
+                      </div>
+                      <Download className="h-5 w-5 text-ink-500 group-hover:text-emerald-400 flex-shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ✅ Status Change Section - Only for team members */}
+            <div className="pt-4 border-t border-ink-600/50">
+              <div className="text-xs font-semibold text-ink-300 mb-3">Update Task Status</div>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(STATUS_CONFIG).map(([key, config]) => {
+                  const Icon = config.icon;
+                  const isSelected = viewingTask.status === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleStatusChangeFromDetail(key)}
+                      disabled={isSelected}
+                      className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold uppercase transition-all ${
+                        isSelected
+                          ? `${config.color} cursor-not-allowed opacity-100`
+                          : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/60 hover:border-ink-500'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {config.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Admin Create/Edit Modal */}
       {user?.role === 'admin' && (
-        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'}>
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingTask ? 'Edit Task' : 'Create New Task'} size="md">
           <div className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Task Title *</label>
               <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="input" placeholder="e.g. Design Homepage" />
             </div>
-            
-            {/* ✅ ENHANCED: Larger Description Textarea */}
+
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
               <textarea 
                 value={form.description} 
                 onChange={(e) => setForm({...form, description: e.target.value})} 
-                className="input h-32 resize-none" 
-                placeholder="Provide detailed project information, requirements, and links here..." 
+                className="input h-24 resize-none" 
+                placeholder="Task details, links, requirements..." 
               />
             </div>
 
@@ -377,21 +531,13 @@ export default function Tasks({ ctx, toast }) {
               </div>
             </div>
 
-            {/* ✅ NEW: Attachment Upload Section */}
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Attachments</label>
-              <div className="flex items-center gap-2">
-                <label className="btn-ghost flex-1 border border-ink-600 cursor-pointer flex items-center justify-center gap-2">
-                  <Paperclip className="h-4 w-4" />
-                  {uploading ? 'Uploading...' : 'Choose File'}
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    onChange={handleFileUpload} 
-                    disabled={uploading}
-                  />
-                </label>
-              </div>
+              <label className="btn-ghost w-full border border-ink-600 cursor-pointer flex items-center justify-center gap-2 py-2.5">
+                <Paperclip className="h-4 w-4" />
+                {uploading ? 'Uploading...' : 'Choose File'}
+                <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+              </label>
               {form.attachments && form.attachments.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {form.attachments.map(att => (
@@ -401,10 +547,7 @@ export default function Tasks({ ctx, toast }) {
                         <span className="text-xs text-ink-300 truncate">{att.name}</span>
                         <span className="text-[10px] text-ink-500 flex-shrink-0">({(att.size / 1024).toFixed(1)} KB)</span>
                       </div>
-                      <button 
-                        onClick={() => handleRemoveAttachment(att.id)}
-                        className="p-1 rounded hover:bg-rose-500/10 text-rose-400 transition-colors"
-                      >
+                      <button onClick={() => handleRemoveAttachment(att.id)} className="p-1 rounded hover:bg-rose-500/10 text-rose-400 transition-colors">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
