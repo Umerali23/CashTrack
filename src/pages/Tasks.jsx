@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { 
   Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, 
-  Calendar, User, Briefcase, Tag, Flag, X, Filter 
+  Calendar, User, Briefcase, Tag, Flag, Paperclip, FileText, Download, X 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
@@ -25,20 +25,12 @@ export default function Tasks({ ctx, toast }) {
   const tasks = ctx.data?.tasks || [];
   const clients = ctx.data?.clients || [];
   const profiles = ctx.data?.profiles || [];
-  const { addTask, updateTask, deleteTask } = ctx;
+  const { addTask, updateTask, deleteTask, uploadAttachment, deleteAttachment } = ctx;
 
-  // Filter State
-  const [filters, setFilters] = useState({
-    status: [],
-    priority: [],
-    assignee: [],
-    client: []
-  });
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -49,78 +41,23 @@ export default function Tasks({ ctx, toast }) {
     dueDate: '',
     status: 'pending',
     priority: 'medium',
-    tags: ''
+    tags: '',
+    attachments: []
   });
 
   const visibleTasks = useMemo(() => {
     if (!user) return [];
-    let filtered = user.role === 'admin' ? [...tasks] : tasks.filter(t => t.assigneeId === user.id);
-
-    // Apply Status Filter
-    if (filters.status.length > 0) {
-      filtered = filtered.filter(t => filters.status.includes(t.status));
-    }
-
-    // Apply Priority Filter
-    if (filters.priority.length > 0) {
-      filtered = filtered.filter(t => filters.priority.includes(t.priority));
-    }
-
-    // Apply Assignee Filter
-    if (filters.assignee.length > 0) {
-      filtered = filtered.filter(t => filters.assignee.includes(t.assigneeId));
-    }
-
-    // Apply Client Filter
-    if (filters.client.length > 0) {
-      filtered = filtered.filter(t => filters.client.includes(t.clientId));
-    }
-
-    return filtered;
-  }, [tasks, user, filters]);
+    if (user.role === 'admin') return tasks;
+    return tasks.filter(t => t.assigneeId === user.id);
+  }, [tasks, user]);
 
   const teamMembers = useMemo(() => profiles.filter(p => p.role !== 'admin'), [profiles]);
 
-  // Filter Handlers
-  const toggleFilter = (type, value) => {
-    setFilters(prev => {
-      const current = prev[type];
-      const updated = current.includes(value)
-        ? current.filter(item => item !== value)
-        : [...current, value];
-      return { ...prev, [type]: updated };
-    });
-  };
-
-  const clearFilters = () => {
-    setFilters({ status: [], priority: [], assignee: [], client: [] });
-  };
-
-  const hasActiveFilters = 
-    filters.status.length > 0 ||
-    filters.priority.length > 0 ||
-    filters.assignee.length > 0 ||
-    filters.client.length > 0;
-
-  const getActiveFilterCount = () => {
-    return filters.status.length + filters.priority.length + 
-           filters.assignee.length + filters.client.length;
-  };
-
-  // Task Modal Handlers
   const openNew = () => {
     setEditingTask(null);
     setForm({
-      title: '',
-      description: '',
-      clientId: '',
-      assigneeId: '',
-      compensation: '',
-      currency: 'USD',
-      dueDate: '',
-      status: 'pending',
-      priority: 'medium',
-      tags: ''
+      title: '', description: '', clientId: '', assigneeId: '', compensation: '',
+      currency: 'USD', dueDate: '', status: 'pending', priority: 'medium', tags: '', attachments: []
     });
     setModalOpen(true);
   };
@@ -137,24 +74,52 @@ export default function Tasks({ ctx, toast }) {
       dueDate: task.dueDate || '',
       status: task.status || 'pending',
       priority: task.priority || 'medium',
-      tags: Array.isArray(task.tags) ? task.tags.join(', ') : (task.tags || '')
+      tags: Array.isArray(task.tags) ? task.tags.join(', ') : (task.tags || ''),
+      attachments: task.attachments || []
     });
     setModalOpen(true);
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    setUploading(true);
+    try {
+      const taskId = editingTask ? editingTask.id : `temp_${Date.now()}`;
+      const newAttachment = await uploadAttachment(file, taskId);
+      
+      setForm(prev => ({
+        ...prev,
+        attachments: [...(prev.attachments || []), newAttachment]
+      }));
+      toast('File uploaded successfully', 'success');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast('Failed to upload file', 'error');
+    } finally {
+      setUploading(false);
+      e.target.value = ''; // Reset input
+    }
+  };
+
+  const handleRemoveAttachment = async (attachmentId) => {
+    if (editingTask) {
+      await deleteAttachment(editingTask.id, attachmentId, form.attachments);
+      toast('Attachment removed', 'info');
+    } else {
+      setForm(prev => ({
+        ...prev,
+        attachments: prev.attachments.filter(a => a.id !== attachmentId)
+      }));
+    }
+  };
+
   const handleSave = async () => {
-    if (!form.title.trim()) {
-      toast('Task title is required', 'error');
-      return;
-    }
-    if (!form.clientId) {
-      toast('Please select a client', 'error');
-      return;
-    }
-    if (!form.assigneeId) {
-      toast('Please assign to a team member', 'error');
-      return;
-    }
+    if (!form.title.trim()) { toast('Task title is required', 'error'); return; }
+    if (!form.clientId) { toast('Please select a client', 'error'); return; }
+    if (!form.assigneeId) { toast('Please assign to a team member', 'error'); return; }
+    
     try {
       const taskData = {
         title: form.title,
@@ -166,7 +131,8 @@ export default function Tasks({ ctx, toast }) {
         clientId: form.clientId,
         assigneeId: form.assigneeId,
         priority: form.priority,
-        tags: form.tags.split(',').map(t => t.trim()).filter(t => t)
+        tags: form.tags.split(',').map(t => t.trim()).filter(t => t),
+        attachments: form.attachments
       };
 
       if (editingTask) {
@@ -188,7 +154,6 @@ export default function Tasks({ ctx, toast }) {
       await updateTask(task.id, { ...task, status: newStatus });
       toast(`Task marked as ${newStatus}`, 'success');
     } catch (error) {
-      console.error('Error updating status:', error);
       toast('Failed to update task', 'error');
     }
   };
@@ -199,14 +164,12 @@ export default function Tasks({ ctx, toast }) {
       await deleteTask(task.id);
       toast('Task deleted', 'info');
     } catch (error) {
-      console.error('Error deleting task:', error);
       toast('Failed to delete task', 'error');
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -214,7 +177,6 @@ export default function Tasks({ ctx, toast }) {
           </h1>
           <p className="text-ink-400 text-sm mt-1">
             {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''} found
-            {hasActiveFilters && ` (filtered from ${tasks.length})`}
           </p>
         </div>
         {user?.role === 'admin' && (
@@ -224,191 +186,11 @@ export default function Tasks({ ctx, toast }) {
         )}
       </div>
 
-      {/* Filter Bar - No Search */}
-      <div className="glass rounded-2xl p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
-              showFilters || hasActiveFilters
-                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
-                : 'border-ink-600 text-ink-300 hover:bg-ink-800/50'
-            }`}
-          >
-            <Filter className="h-4 w-4" />
-            Filters
-            {getActiveFilterCount() > 0 && (
-              <span className="ml-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
-                {getActiveFilterCount()}
-              </span>
-            )}
-          </button>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/50 text-rose-400 hover:bg-rose-500/10 transition-all"
-            >
-              <X className="h-4 w-4" />
-              Clear
-            </button>
-          )}
-        </div>
-
-        {/* Filter Options */}
-        {showFilters && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-ink-600/50">
-            {/* Status Filter */}
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-2 block">Status</label>
-              <div className="space-y-2">
-                {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleFilter('status', key)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      filters.status.includes(key)
-                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
-                    }`}
-                  >
-                    <config.icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Priority Filter */}
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-2 block">Priority</label>
-              <div className="space-y-2">
-                {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleFilter('priority', key)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      filters.priority.includes(key)
-                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${
-                      key === 'low' ? 'bg-slate-400' :
-                      key === 'medium' ? 'bg-blue-400' :
-                      key === 'high' ? 'bg-amber-400' : 'bg-rose-400'
-                    }`} />
-                    {config.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Assignee Filter */}
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-2 block">Assignee</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {teamMembers.map(member => (
-                  <button
-                    key={member.id}
-                    onClick={() => toggleFilter('assignee', member.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      filters.assignee.includes(member.id)
-                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
-                    }`}
-                  >
-                    <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${member.avatarColor} flex items-center justify-center text-[8px] font-bold text-white`}>
-                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </div>
-                    <span className="truncate">{member.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Client Filter */}
-            <div>
-              <label className="text-xs font-semibold text-ink-300 mb-2 block">Client</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {clients.map(client => (
-                  <button
-                    key={client.id}
-                    onClick={() => toggleFilter('client', client.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      filters.client.includes(client.id)
-                        ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                        : 'bg-ink-900/40 border border-ink-600/50 text-ink-300 hover:bg-ink-800/50'
-                    }`}
-                  >
-                    <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${client.avatarColor} flex items-center justify-center text-[8px] font-bold text-white`}>
-                      {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </div>
-                    <span className="truncate">{client.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Active Filter Chips */}
-        {hasActiveFilters && (
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-ink-600/50">
-            {filters.status.map(status => (
-              <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-                {STATUS_CONFIG[status].label}
-                <button onClick={() => toggleFilter('status', status)} className="hover:text-white">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            {filters.priority.map(priority => (
-              <span key={priority} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-                {PRIORITY_CONFIG[priority].label}
-                <button onClick={() => toggleFilter('priority', priority)} className="hover:text-white">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            {filters.assignee.map(assigneeId => {
-              const member = profiles.find(p => p.id === assigneeId);
-              return member ? (
-                <span key={assigneeId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-                  {member.name}
-                  <button onClick={() => toggleFilter('assignee', assigneeId)} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ) : null;
-            })}
-            {filters.client.map(clientId => {
-              const client = clients.find(c => c.id === clientId);
-              return client ? (
-                <span key={clientId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-                  {client.name}
-                  <button onClick={() => toggleFilter('client', clientId)} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Task Grid */}
       {visibleTasks.length === 0 ? (
         <EmptyState
-          title={hasActiveFilters ? "No tasks match your filters" : (user?.role === 'admin' ? "No tasks yet" : "No tasks assigned")}
-          description={hasActiveFilters 
-            ? "Try adjusting your filters to see more tasks."
-            : (user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now.")
-          }
-          action={!hasActiveFilters && user?.role === 'admin' ? (
-            <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100">
-              <Plus className="h-4 w-4" /> Create Task
-            </button>
-          ) : null}
+          title={user?.role === 'admin' ? "No tasks yet" : "No tasks assigned"}
+          description={user?.role === 'admin' ? "Create your first task to get started." : "You have no active tasks right now."}
+          action={user?.role === 'admin' ? <button onClick={openNew} className="btn-primary bg-white text-ink-950 hover:bg-ink-100"><Plus className="h-4 w-4" /> Create Task</button> : null}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -435,8 +217,7 @@ export default function Tasks({ ctx, toast }) {
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex gap-2 flex-wrap">
                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${statusConfig.color}`}>
-                      <StatusIcon className="h-3 w-3" />
-                      {statusConfig.label}
+                      <StatusIcon className="h-3 w-3" />{statusConfig.label}
                     </span>
                     <span className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase ${priorityConfig.color}`}>
                       {priorityConfig.label}
@@ -462,15 +243,14 @@ export default function Tasks({ ctx, toast }) {
                 </div>
 
                 <h3 className="font-bold text-lg tracking-tight mb-1 line-clamp-1" title={title}>{title}</h3>
-                <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow">{description}</p>
+                <p className="text-xs text-ink-400 mb-3 line-clamp-2 flex-grow whitespace-pre-wrap">{description}</p>
 
                 {tagsArray.length > 0 && tagsArray[0] && (
                   <div className="flex flex-wrap gap-1 mb-3">
                     {tagsArray.map((tag, tagIndex) => (
                       tag && (
                         <span key={tagIndex} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20">
-                          <Tag className="h-2.5 w-2.5" />
-                          {tag}
+                          <Tag className="h-2.5 w-2.5" />{tag}
                         </span>
                       )
                     ))}
@@ -500,6 +280,30 @@ export default function Tasks({ ctx, toast }) {
                     {currency === 'USD' ? '$' : 'Rs'} {compensation} {currency}
                   </div>
                 </div>
+
+                {/* ✅ NEW: Attachments Section on Task Card */}
+                {task.attachments && task.attachments.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-ink-600/50">
+                    <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-2 flex items-center gap-1">
+                      <Paperclip className="h-3 w-3" /> Attachments ({task.attachments.length})
+                    </div>
+                    <div className="space-y-1.5">
+                      {task.attachments.map(att => (
+                        <a 
+                          key={att.id} 
+                          href={att.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 p-2 rounded-lg bg-ink-900/40 hover:bg-ink-800/60 transition-colors group"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-ink-400 group-hover:text-emerald-400 flex-shrink-0" />
+                          <span className="text-xs text-ink-300 truncate flex-1">{att.name}</span>
+                          <Download className="h-3.5 w-3.5 text-ink-500 group-hover:text-emerald-400 flex-shrink-0" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -515,9 +319,15 @@ export default function Tasks({ ctx, toast }) {
               <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="input" placeholder="e.g. Design Homepage" />
             </div>
             
+            {/* ✅ ENHANCED: Larger Description Textarea */}
             <div>
               <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Description</label>
-              <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="input h-20 resize-none" placeholder="Task details..." />
+              <textarea 
+                value={form.description} 
+                onChange={(e) => setForm({...form, description: e.target.value})} 
+                className="input h-32 resize-none" 
+                placeholder="Provide detailed project information, requirements, and links here..." 
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -556,37 +366,57 @@ export default function Tasks({ ctx, toast }) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Price *</label>
-                <input
-                  type="number"
-                  value={form.compensation}
-                  onChange={(e) => setForm({...form, compensation: e.target.value})}
-                  className="input"
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
+                <input type="number" value={form.compensation} onChange={(e) => setForm({...form, compensation: e.target.value})} className="input" placeholder="0.00" min="0" step="0.01" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Currency</label>
-                <select
-                  value={form.currency}
-                  onChange={(e) => setForm({...form, currency: e.target.value})}
-                  className="input"
-                >
+                <select value={form.currency} onChange={(e) => setForm({...form, currency: e.target.value})} className="input">
                   <option value="USD">USD ($)</option>
                   <option value="PKR">PKR (Rs)</option>
                 </select>
               </div>
             </div>
 
+            {/* ✅ NEW: Attachment Upload Section */}
+            <div>
+              <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Attachments</label>
+              <div className="flex items-center gap-2">
+                <label className="btn-ghost flex-1 border border-ink-600 cursor-pointer flex items-center justify-center gap-2">
+                  <Paperclip className="h-4 w-4" />
+                  {uploading ? 'Uploading...' : 'Choose File'}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    onChange={handleFileUpload} 
+                    disabled={uploading}
+                  />
+                </label>
+              </div>
+              {form.attachments && form.attachments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {form.attachments.map(att => (
+                    <div key={att.id} className="flex items-center justify-between p-2 rounded-lg bg-ink-900/40 border border-ink-600/50">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <FileText className="h-4 w-4 text-ink-400 flex-shrink-0" />
+                        <span className="text-xs text-ink-300 truncate">{att.name}</span>
+                        <span className="text-[10px] text-ink-500 flex-shrink-0">({(att.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                      <button 
+                        onClick={() => handleRemoveAttachment(att.id)}
+                        className="p-1 rounded hover:bg-rose-500/10 text-rose-400 transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-ink-300 mb-1.5 block">Status</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({...form, status: e.target.value})}
-                  className="input"
-                >
+                <select value={form.status} onChange={(e) => setForm({...form, status: e.target.value})} className="input">
                   <option value="pending">Pending</option>
                   <option value="in-progress">In Progress</option>
                   <option value="completed">Completed</option>
